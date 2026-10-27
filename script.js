@@ -40,7 +40,28 @@ const RPM  = { cx: 495,  cy: 398, bezel: 270, ring: 254, face: 238, a0: 150, swe
 // fuel: busur berpusat di (cx,cy); jarum berputar di hub (hx,hy) lalu diarahkan ke titik busur
 const FUEL = { cx: 1536, cy: 437, bezel: 196, ring: 182, face: 170, a0: 135, sweep: 135, hx: 1592, hy: 403, aimR: 150 };
 // oil PSI: busur berpusat di bawah (cx,cy), jarum berputar di hub kecil (hx,hy)
-const OIL  = { cx: 497,  cy: 655, dome: 192, a0: 220, sweep: 100, hx: 460, hy: 597, aimR: 165 };
+const OIL  = { cx: RPM.cx, cy: 655, dome: 192, a0: 220, sweep: 100, hx: RPM.cx, hy: 600, aimR: 165 };
+
+// ---------- Tata letak: 3 gauge satu garis tengah, jarak antar bezel sama, dibungkus satu rumah ----------
+// (geometri di atas tetap dalam koordinat lokal; tiap gauge digeser ke posisi akhirnya lewat <g transform>)
+const LAYOUT = { x: 200, midY: 390, pad: 34, gap: 18, rx: 120 };
+const FRAME = {
+    x: LAYOUT.x, y: LAYOUT.midY - SPD.bezel - LAYOUT.pad, r: LAYOUT.rx,
+    w: LAYOUT.pad * 2 + LAYOUT.gap * 2 + (RPM.bezel + SPD.bezel + FUEL.bezel) * 2,
+    h: (SPD.bezel + LAYOUT.pad) * 2,
+};
+const SHIFT = (() => {
+    const rpmL = LAYOUT.x + LAYOUT.pad;                       // tepi kiri bezel RPM
+    const spdL = rpmL + RPM.bezel * 2 + LAYOUT.gap;           // tepi kiri bezel speedo
+    const fuelL = spdL + SPD.bezel * 2 + LAYOUT.gap;          // tepi kiri bezel fuel
+    return {
+        rpm:  [rpmL + RPM.bezel - RPM.cx,   LAYOUT.midY - RPM.cy],
+        spd:  [spdL + SPD.bezel - SPD.cx,   LAYOUT.midY - SPD.cy],
+        fuel: [fuelL + FUEL.bezel - FUEL.cx, LAYOUT.midY - FUEL.cy],
+    };
+})();
+const VIEW = [FRAME.x - 14, FRAME.y - 14, FRAME.w + 28, FRAME.h + 28];
+svg.setAttribute('viewBox', VIEW.join(' '));
 
 const pol = (cx, cy, r, a) => {
     const t = (a * Math.PI) / 180;
@@ -110,7 +131,7 @@ const ICON_OIL = `<path fill="currentColor" stroke="none" d="M2.5 10h4.2l1.3-2h2
 
 // ---------- ODO LCD 7-segment (6 digit: 5 digit + 1 desimal) ----------
 const ODO_N = 6;
-const LCD = { x0: 955, y: 530, pitch: 25, sc: 0.74 };
+const LCD = { x0: SPD.cx - 74, y: 530, pitch: 25, sc: 0.74 };   // 6 digit tepat di tengah speedo
 const SEG_ON = ['abcdef', 'bc', 'abdeg', 'abcdg', 'bcfg', 'acdfg', 'acdefg', 'abc', 'abcdefg', 'abcdfg'];
 function segPolys() {
     const xl = 3, xr = 23, yt = 3, ym = 21, yb = 39, t = 4.6, g = 2.4;
@@ -154,74 +175,77 @@ function buildDial() {
       <linearGradient id="gloss" x1="0" y1="0" x2="0" y2="1">
         <stop offset="0" stop-color="#fff" stop-opacity="0.16"/><stop offset="1" stop-color="#fff" stop-opacity="0"/>
       </linearGradient>
+      <linearGradient id="housingG" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#1c1d21"/><stop offset="0.5" stop-color="#0e0e10"/><stop offset="1" stop-color="#060607"/>
+      </linearGradient>
       <clipPath id="tachClip"><circle cx="${RPM.cx}" cy="${RPM.cy}" r="${RPM.face}"/></clipPath>
     </defs>
-    <rect x="640" y="205" width="810" height="450" rx="70" fill="#0b0b0c" stroke="rgba(255,255,255,0.06)" stroke-width="2"/>`;
+`;
 
-    // ----- bezel + muka (speedo digambar terakhir supaya menimpa tepi tacho) -----
-    s += bezelFace(RPM) + bezelFace(FUEL) + bezelFace(SPD);
+    // ----- rumah / frame: membungkus ketiga gauge dengan padding & jarak yang sama -----
+    s += `<rect x="${FRAME.x}" y="${FRAME.y}" width="${FRAME.w}" height="${FRAME.h}" rx="${FRAME.r}" fill="url(#housingG)"/>
+    <rect x="${FRAME.x + 1}" y="${FRAME.y + 1}" width="${FRAME.w - 2}" height="${FRAME.h - 2}" rx="${FRAME.r - 1}" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="2"/>
+    <rect x="${FRAME.x + 10}" y="${FRAME.y + 10}" width="${FRAME.w - 20}" height="${FRAME.h - 20}" rx="${FRAME.r - 10}" fill="none" stroke="rgba(0,0,0,0.6)" stroke-width="3"/>`;
 
-    // ----- TACHO 0-11, zona merah 8-11 -----
-    s += `<path class="zone" d="${sector(RPM.cx, RPM.cy, 190, 224, rA(REDLINE), rA(MAX_RPM))}"/>`;
+    // tiap gauge digambar utuh (bezel, skala, ikon, jarum) lalu digeser ke posisinya
+    const place = (k, inner) => `<g transform="translate(${SHIFT[k][0]} ${SHIFT[k][1]})">${inner}</g>`;
+
+    // =================== TACHO 0-11, zona merah 8-11 (kiri) ===================
+    let t = bezelFace(RPM);
+    t += `<path class="zone" d="${sector(RPM.cx, RPM.cy, 190, 224, rA(REDLINE), rA(MAX_RPM))}"/>`;
     for (let i = 0; i <= 55; i++) {
         const a = rA(i * 0.2), major = i % 5 === 0, inRed = i >= REDLINE * 5;
-        s += tick(RPM.cx, RPM.cy, a, major ? 190 : 208, 224, major ? 4.6 : 2.4, inRed ? 'tkw' : 'tk');
+        t += tick(RPM.cx, RPM.cy, a, major ? 190 : 208, 224, major ? 4.6 : 2.4, inRed ? 'tkw' : 'tk');
     }
     for (let v = 0; v <= MAX_RPM; v++) {
         const [x, y] = pol(RPM.cx, RPM.cy, 150, rA(v));
-        s += txt('num', x, y, 40, v);
+        t += txt('num', x, y, 40, v);
     }
-    s += txt('brand', RPM.cx, 300, 34, 'HSW') + txt('lbl', RPM.cx, 331, 19, 'x1000');
+    t += txt('brand', RPM.cx, RPM.cy - 98, 34, 'HSW') + txt('lbl', RPM.cx, RPM.cy - 67, 19, 'x1000');
 
-    // ----- OIL PSI: kubah hitam di dalam gauge RPM (jarum = setHealth) -----
-    s += `<g clip-path="url(#tachClip)">
+    // OIL PSI: kubah hitam di dalam gauge RPM (jarum = setHealth), hub di tengah, ikon & PSI simetris di kiri/kanan hub
+    t += `<g clip-path="url(#tachClip)">
       <circle cx="${OIL.cx}" cy="${OIL.cy}" r="${OIL.dome}" fill="url(#domeG)"/>
       <circle cx="${OIL.cx}" cy="${OIL.cy}" r="${OIL.dome - 3}" fill="none" stroke="url(#chrome)" stroke-width="5" opacity="0.9"/>
       <path class="dred" d="${arcPath(OIL.cx, OIL.cy, 177, oA(105), oA(OIL_MAX))}"/>`;
     for (let p = 0; p <= OIL_MAX; p += 5) {
         const major = p % 30 === 0, mid = p % 15 === 0, red = p >= 105;
-        s += tick(OIL.cx, OIL.cy, oA(p), major ? 160 : mid ? 164 : 167, 174, major ? 3.4 : mid ? 2.4 : 1.6, red ? 'dtk red' : 'dtk');
+        t += tick(OIL.cx, OIL.cy, oA(p), major ? 160 : mid ? 164 : 167, 174, major ? 3.4 : mid ? 2.4 : 1.6, red ? 'dtk red' : 'dtk');
     }
     for (let p = 0; p <= OIL_MAX; p += 30) {
         const [x, y] = pol(OIL.cx, OIL.cy, 146, oA(p));
-        s += txt('dnum', x, y, 27, p);
+        t += txt('dnum', x, y, 27, p);
     }
-    s += txt('dlbl', OIL.cx, 585, 17, 'PSI') + `</g>`;
+    t += txt('dlbl', OIL.hx + 64, OIL.hy, 17, 'PSI') + `</g>`;
+    t += shade(RPM);
+    t += icon('oil-ico', 'gauge-ico lt', OIL.hx - 64 - 16.8, OIL.hy - 16.8, 1.4, ICON_OIL);
+    t += `<circle cx="${RPM.cx - 78}" cy="${RPM.cy}" r="8" fill="url(#hubG)"/><circle cx="${RPM.cx + 78}" cy="${RPM.cy}" r="8" fill="url(#hubG)"/>`;
+    t += needle('nd-oil', OIL.hx, OIL.hy, 140, 26, 3.8, 18);
+    t += needle('nd-rpm', RPM.cx, RPM.cy, 215, 62, 7.5, 41);
+    s += place('rpm', t);
 
-    // ----- SPEEDO 0-200 -----
+    // =================== SPEEDO 0-200 + ODO (tengah) ===================
+    let v = bezelFace(SPD);
     for (let i = 0; i <= 50; i++) {
         const major = i % 5 === 0;
-        s += tick(SPD.cx, SPD.cy, sA(i * 4), major ? 214 : 234, 252, major ? 5 : 2.4);
+        v += tick(SPD.cx, SPD.cy, sA(i * 4), major ? 214 : 234, 252, major ? 5 : 2.4);
     }
-    for (let v = 0; v <= MAX_MPH; v += 20) {
-        const [x, y] = pol(SPD.cx, SPD.cy, 186, sA(v));
-        s += txt('num', x, y, 40, v);
+    for (let n = 0; n <= MAX_MPH; n += 20) {
+        const [x, y] = pol(SPD.cx, SPD.cy, 186, sA(n));
+        v += txt('num', x, y, 40, n);
     }
-    s += `<text class="brand" x="${SPD.cx + 4}" y="300" font-size="40">RH-<tspan class="brand-red">7</tspan></text>`;
-    s += txt('lbl mph-lbl', SPD.cx, 338, 18, 'MPH');
+    v += `<text class="brand" x="${SPD.cx + 4}" y="${SPD.cy - 90}" font-size="40">RH-<tspan class="brand-red">7</tspan></text>`;
+    v += txt('lbl mph-lbl', SPD.cx, SPD.cy - 52, 18, 'MPH');
+    v += shade(SPD);
 
-    // ----- FUEL: tick + zona merah dekat E + F / E -----
-    s += `<path class="zone" d="${sector(FUEL.cx, FUEL.cy, 132, 166, FUEL.a0, FUEL.a0 + 17)}"/>`;
-    for (let k = 0; k <= 6; k++) {
-        const major = k % 2 === 0;
-        s += tick(FUEL.cx, FUEL.cy, FUEL.a0 + k * 22.5, major ? 127 : 145, 165, major ? 5 : 2.6);
-    }
-    s += txt('num', 1538, 341, 38, 'F') + txt('num', 1538, 553, 38, 'E');
+    // gear + 3 ikon status: 4 slot berjarak sama, dipusatkan di bawah hub speedo
+    const ROW_Y = SPD.cy + 82, SLOT = 52, IC = 1.4 * 12;     // IC = setengah lebar ikon
+    v += `<text id="gear" class="gear" x="${SPD.cx - SLOT * 1.5}" y="${ROW_Y}">N</text>`;
+    v += icon('headlight', 'eng', SPD.cx - SLOT * 0.5 - IC, ROW_Y - IC, 1.4, ICON_HEADLIGHT);
+    v += icon('seatbelts', 'eng warn', SPD.cx + SLOT * 0.5 - IC, ROW_Y - IC, 1.4, ICON_SEATBELT);
+    v += icon('door-lock', '', SPD.cx + SLOT * 1.5 - IC, ROW_Y - IC, 1.4, ICON_LOCK);
 
-    // ----- bayangan "mesin mati" (di atas muka, di bawah jarum & ikon) -----
-    s += shade(RPM) + shade(FUEL) + shade(SPD);
-
-    // ----- ikon gauge fuel & oil -----
-    s += icon('fuel-ico', 'gauge-ico', 1485, 408, 1.9, ICON_FUEL);
-    s += icon('oil-ico', 'gauge-ico lt', 480, 533, 1.4, ICON_OIL);
-
-    // ----- gear + ikon status (di bawah hub speedo) -----
-    s += `<text id="gear" class="gear" x="950" y="472">N</text>`;
-    s += icon('headlight', 'eng', 988, 455, 1.4, ICON_HEADLIGHT);
-    s += icon('seatbelts', 'eng warn', 1034, 455, 1.4, ICON_SEATBELT);
-    s += icon('door-lock', '', 1080, 455, 1.4, ICON_LOCK);
-
-    // ----- ODO digital LCD: mati total saat mesin off -----
+    // ODO digital LCD (dipusatkan di speedo): mati total saat mesin off
     const SEGS = segPolys();
     let digits = '';
     for (let i = 0; i < ODO_N; i++) {
@@ -231,25 +255,32 @@ function buildDial() {
         for (const k of 'abcdefg') g += `<polygon class="seg" id="sg${i}${k}" points="${SEGS[k]}"/>`;
         digits += `<g transform="translate(${x + 2} ${LCD.y}) skewX(-7) scale(${LCD.sc})">${g}</g>`;
     }
-    s += `<g class="lcd">
-      <rect x="903" y="513" width="247" height="65" rx="8" fill="#0b0c0d"/>
-      <rect x="908" y="518" width="237" height="55" rx="4" fill="url(#lcdOff)"/>
+    const lx = SPD.cx - 123.5;
+    v += `<g class="lcd">
+      <rect x="${lx}" y="513" width="247" height="65" rx="8" fill="#0b0c0d"/>
+      <rect x="${lx + 5}" y="518" width="237" height="55" rx="4" fill="url(#lcdOff)"/>
       <g class="lcd-live">
-        <rect x="908" y="518" width="237" height="55" rx="4" fill="url(#lcdOn)"/>
+        <rect x="${lx + 5}" y="518" width="237" height="55" rx="4" fill="url(#lcdOn)"/>
         <g class="lcd-digits">${digits}<circle class="lcd-dot" cx="${LCD.x0 + 4 * LCD.pitch + 22}" cy="${LCD.y + 29}" r="1.6"/></g>
       </g>
-      <rect x="908" y="518" width="237" height="24" rx="4" fill="url(#gloss)"/>
+      <rect x="${lx + 5}" y="518" width="237" height="24" rx="4" fill="url(#gloss)"/>
     </g>`;
+    v += `<circle cx="${SPD.cx - 88}" cy="${SPD.cy}" r="8" fill="url(#hubG)"/><circle cx="${SPD.cx + 88}" cy="${SPD.cy}" r="8" fill="url(#hubG)"/>`;
+    v += needle('nd-spd', SPD.cx, SPD.cy, 240, 72, 8, 44);
+    s += place('spd', v);
 
-    // ----- sekrup kecil di samping hub -----
-    s += `<circle cx="${RPM.cx - 78}" cy="397" r="8" fill="url(#hubG)"/><circle cx="${RPM.cx + 78}" cy="397" r="8" fill="url(#hubG)"/>`;
-    s += `<circle cx="${SPD.cx - 88}" cy="397" r="8" fill="url(#hubG)"/><circle cx="${SPD.cx + 88}" cy="397" r="8" fill="url(#hubG)"/>`;
-
-    // ----- jarum + hub (paling atas) -----
-    s += needle('nd-fuel', FUEL.hx, FUEL.hy, 200, 42, 5.5, 38);
-    s += needle('nd-oil', OIL.hx, OIL.hy, 140, 26, 3.8, 18);
-    s += needle('nd-rpm', RPM.cx, RPM.cy, 215, 62, 7.5, 41);
-    s += needle('nd-spd', SPD.cx, SPD.cy, 240, 72, 8, 44);
+    // =================== FUEL F/E (kanan) ===================
+    let f = bezelFace(FUEL);
+    f += `<path class="zone" d="${sector(FUEL.cx, FUEL.cy, 132, 166, FUEL.a0, FUEL.a0 + 17)}"/>`;
+    for (let k = 0; k <= 6; k++) {
+        const major = k % 2 === 0;
+        f += tick(FUEL.cx, FUEL.cy, FUEL.a0 + k * 22.5, major ? 127 : 145, 165, major ? 5 : 2.6);
+    }
+    f += txt('num', FUEL.cx + 2, FUEL.cy - 96, 38, 'F') + txt('num', FUEL.cx + 2, FUEL.cy + 96, 38, 'E');
+    f += shade(FUEL);
+    f += icon('fuel-ico', 'gauge-ico', FUEL.cx - 28 - 22.8, FUEL.cy - 6 - 22.8, 1.9, ICON_FUEL);
+    f += needle('nd-fuel', FUEL.hx, FUEL.hy, 200, 42, 5.5, 38);
+    s += place('fuel', f);
 
     svg.innerHTML = s;
 }

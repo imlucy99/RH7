@@ -41,8 +41,8 @@ html, body {
     position: fixed;
     right: var(--offset-right);
     bottom: var(--offset-bottom);
-    width: 1000px;
-    height: 397px;
+    width: 1040px;
+    height: 425px;           /* rasio = viewBox 1636 x 668 */
     transform: scale(var(--scale));
     transform-origin: bottom right;
 }
