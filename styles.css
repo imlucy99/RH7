@@ -41,8 +41,8 @@ html, body {
     position: fixed;
     right: var(--offset-right);
     bottom: var(--offset-bottom);
-    width: 1040px;
-    height: 425px;           /* rasio = viewBox 1636 x 668 */
+    width: 757px;
+    height: 423px;           /* rasio = viewBox 1181 x 660 */
     transform: scale(var(--scale));
     transform-origin: bottom right;
 }
@@ -58,7 +58,7 @@ body.preview {
 body.preview .hud-wrap {
     right: 50%;
     bottom: 50%;
-    transform: translate(50%, 50%) scale(min(1, calc(100vw / 1040px)));
+    transform: translate(50%, 50%) scale(min(1, calc(100vw / 800px)));
     transform-origin: center;
 }
 
