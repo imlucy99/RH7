@@ -40,9 +40,9 @@ const SPD  = { cx: 1032, cy: 390, bezel: 286, ring: 270, face: 260, a0: 150, swe
 const RPM  = { cx: 495,  cy: 398, bezel: 270, ring: 254, face: 238, a0: 150, sweep: 240 };
 // fuel: busur berpusat di (cx,cy); jarum berputar di hub (hx,hy) lalu diarahkan ke titik busur
 // fuel: kubah hitam kecil di bagian bawah speedo (gaya oil PSI); jarum berputar di hub kecil lalu diarahkan ke titik busur
-const FUEL = { cx: SPD.cx, cy: 650, dome: 136, a0: 215, sweep: 110, hx: SPD.cx, hy: 600, aimR: 110 };
+const FUEL = { cx: SPD.cx, cy: 650, dome: 136, hx: SPD.cx, hy: 604, a0: 210, sweep: 120 };
 // oil PSI: busur berpusat di bawah (cx,cy), jarum berputar di hub kecil (hx,hy)
-const OIL  = { cx: RPM.cx, cy: 655, dome: 192, a0: 220, sweep: 100, hx: RPM.cx, hy: 600, aimR: 165 };
+const OIL  = { cx: RPM.cx, cy: 655, dome: 192, hx: RPM.cx, hy: 600, a0: 210, sweep: 120 };   // skala dipusatkan di hub -> jarum panjang tetap
 
 // ---------- Tata letak: posisi asli tiap gauge (ukuran & tinggi beda-beda), dibungkus satu rumah berkontur ----------
 const HP = 34;                                                      // tebal rumah di sekeliling bezel
@@ -203,20 +203,20 @@ function buildDial() {
     t += `<g clip-path="url(#tachClip)">
       <circle cx="${OIL.cx}" cy="${OIL.cy}" r="${OIL.dome}" fill="url(#domeG)"/>
       <circle cx="${OIL.cx}" cy="${OIL.cy}" r="${OIL.dome - 3}" fill="none" stroke="url(#chrome)" stroke-width="5" opacity="0.9"/>
-      <path class="dred" d="${arcPath(OIL.cx, OIL.cy, 177, oA(105), oA(OIL_MAX))}"/>`;
+      <path class="dred" d="${arcPath(OIL.hx, OIL.hy, 122, oA(105), oA(OIL_MAX))}"/>`;
     for (let p = 0; p <= OIL_MAX; p += 5) {
         const major = p % 30 === 0, mid = p % 15 === 0, red = p >= 105;
-        t += tick(OIL.cx, OIL.cy, oA(p), major ? 160 : mid ? 164 : 167, 174, major ? 3.4 : mid ? 2.4 : 1.6, red ? 'dtk red' : 'dtk');
+        t += tick(OIL.hx, OIL.hy, oA(p), major ? 98 : mid ? 103 : 108, 118, major ? 3.4 : mid ? 2.4 : 1.6, red ? 'dtk red' : 'dtk');
     }
     for (let p = 0; p <= OIL_MAX; p += 30) {
-        const [x, y] = pol(OIL.cx, OIL.cy, 146, oA(p));
-        t += txt('dnum', x, y, 27, p);
+        const [x, y] = pol(OIL.hx, OIL.hy, 78, oA(p));
+        t += txt('dnum', x, y, 25, p);
     }
     t += txt('dlbl', OIL.hx + 64, OIL.hy, 17, 'PSI') + `</g>`;
     t += shade(RPM);
     t += icon('oil-ico', 'gauge-ico lt', OIL.hx - 64 - 16.8, OIL.hy - 16.8, 1.4, ICON_OIL);
     t += `<circle cx="${RPM.cx - 78}" cy="${RPM.cy}" r="8" fill="url(#hubG)"/><circle cx="${RPM.cx + 78}" cy="${RPM.cy}" r="8" fill="url(#hubG)"/>`;
-    t += needle('nd-oil', OIL.hx, OIL.hy, 140, 26, 3.8, 18);
+    t += needle('nd-oil', OIL.hx, OIL.hy, 112, 24, 3.8, 18);
     t += needle('nd-rpm', RPM.cx, RPM.cy, 215, 62, 7.5, 41);
     s += place('rpm', t);
 
@@ -237,15 +237,15 @@ function buildDial() {
     v += `<g clip-path="url(#spdClip)">
       <circle cx="${FUEL.cx}" cy="${FUEL.cy}" r="${FUEL.dome}" fill="url(#domeG)"/>
       <circle cx="${FUEL.cx}" cy="${FUEL.cy}" r="${FUEL.dome - 3}" fill="none" stroke="url(#chrome)" stroke-width="5" opacity="0.9"/>
-      <path class="dred" d="${arcPath(FUEL.cx, FUEL.cy, FUEL.dome - 15, fA(0), fA(0.14))}"/>`;
+      <path class="dred" d="${arcPath(FUEL.hx, FUEL.hy, 86, fA(0), fA(0.14))}"/>`;
     for (let i = 0; i <= 8; i++) {
         const major = i % 2 === 0, red = i <= 1;
-        v += tick(FUEL.cx, FUEL.cy, fA(i / 8), major ? FUEL.dome - 36 : FUEL.dome - 28, FUEL.dome - 18, major ? 3.6 : 2.2, red ? 'dtk red' : 'dtk');
+        v += tick(FUEL.hx, FUEL.hy, fA(i / 8), major ? 64 : 72, 81, major ? 3.4 : 2.2, red ? 'dtk red' : 'dtk');
     }
-    const fl = (k, size, t) => { const [x, y] = pol(FUEL.cx, FUEL.cy, FUEL.dome - 58, fA(k)); return txt('dnum', x, y, size, t); };
-    v += fl(0, 24, 'E') + fl(0.5, 20, '1/2') + fl(1, 24, 'F') + `</g>`;
+    const fl = (k, size, t) => { const [x, y] = pol(FUEL.hx, FUEL.hy, 44, fA(k)); return txt('dnum', x, y, size, t); };
+    v += fl(0, 22, 'E') + fl(0.5, 17, '1/2') + fl(1, 22, 'F') + `</g>`;
     v += shade(SPD);
-    v += icon('fuel-ico', 'gauge-ico lt', FUEL.hx - 10.8, FUEL.hy + 16, 0.9, ICON_FUEL);
+    v += icon('fuel-ico', 'gauge-ico lt', FUEL.hx - 10.8, FUEL.hy + 15, 0.9, ICON_FUEL);
 
     // gear + 3 ikon status: dua di kiri & dua di kanan kubah fuel
     const ROW_Y = SPD.cy + 155, IC = 1.4 * 12;                       // IC = setengah lebar ikon
@@ -275,7 +275,7 @@ function buildDial() {
       <rect x="${lx + 5}" y="${ly + 4}" width="237" height="18" rx="4" fill="url(#gloss)"/>
     </g>`;
     v += `<circle cx="${SPD.cx - 88}" cy="${SPD.cy}" r="8" fill="url(#hubG)"/><circle cx="${SPD.cx + 88}" cy="${SPD.cy}" r="8" fill="url(#hubG)"/>`;
-    v += needle('nd-fuel', FUEL.hx, FUEL.hy, 100, 20, 3.4, 14);
+    v += needle('nd-fuel', FUEL.hx, FUEL.hy, 70, 14, 3.2, 13);
     v += needle('nd-spd', SPD.cx, SPD.cy, 240, 72, 8, 44);
     s += place('spd', v);
 
@@ -290,12 +290,6 @@ function setNeedle(el, key, x, y, a, sx) {
     if (ang[key] === k) return;                                   // tulis hanya kalau jarum benar-benar bergerak
     ang[key] = k;
     el.setAttribute('transform', `translate(${x} ${y}) rotate(${a.toFixed(2)}) scale(${sx.toFixed(3)} 1)`);
-}
-// Jarum yang pivotnya tidak di pusat busur: arahkan ke titik pada busur, panjang menyesuaikan jarak
-function aimNeedle(el, key, hx, hy, cx, cy, r, a, baseL) {
-    const [tx, ty] = pol(cx, cy, r, a);
-    const dx = tx - hx, dy = ty - hy;
-    setNeedle(el, key, hx, hy, (Math.atan2(dy, dx) * 180) / Math.PI, Math.hypot(dx, dy) / baseL);
 }
 // Helper kelas untuk elemen SVG (className SVG bukan string biasa)
 function setCls(el, cls) { if (el.getAttribute('class') !== cls) el.setAttribute('class', cls); }
@@ -355,9 +349,9 @@ function frame(now) {
     setNeedle(ndSpd, 'spd', SPD.cx, SPD.cy, SPD.a0 + clamp01(state.spdShown) * SPD.sweep, 1);
     const rv = Math.max(0, Math.min(MAX_RPM, state.rpmShown * RPM_FULL));
     setNeedle(ndRpm, 'rpm', RPM.cx, RPM.cy, RPM.a0 + (rv / MAX_RPM) * RPM.sweep, 1);
-    aimNeedle(ndFuel, 'fuel', FUEL.hx, FUEL.hy, FUEL.cx, FUEL.cy, FUEL.aimR, FUEL.a0 + clamp01(state.fuelShown) * FUEL.sweep, 100);
+    setNeedle(ndFuel, 'fuel', FUEL.hx, FUEL.hy, FUEL.a0 + clamp01(state.fuelShown) * FUEL.sweep, 1);
     const psi = Math.max(0, Math.min(OIL_MAX, state.oilShown * OIL_FULL_PSI));
-    aimNeedle(ndOil, 'oil', OIL.hx, OIL.hy, OIL.cx, OIL.cy, OIL.aimR, OIL.a0 + (psi / OIL_MAX) * OIL.sweep, 140);
+    setNeedle(ndOil, 'oil', OIL.hx, OIL.hy, OIL.a0 + (psi / OIL_MAX) * OIL.sweep, 1);
 
     if (booting || limiter || state.spdShown !== tSpd || state.rpmShown !== tRpm || state.fuelShown !== tFuel || state.oilShown !== tOil) {
         rafId = requestAnimationFrame(frame);
