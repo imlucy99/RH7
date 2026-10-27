@@ -175,17 +175,25 @@ function buildDial() {
       <linearGradient id="gloss" x1="0" y1="0" x2="0" y2="1">
         <stop offset="0" stop-color="#fff" stop-opacity="0.16"/><stop offset="1" stop-color="#fff" stop-opacity="0"/>
       </linearGradient>
-      <linearGradient id="housingG" x1="0" y1="0" x2="0" y2="1">
+      <linearGradient id="housingG" gradientUnits="userSpaceOnUse" x1="0" y1="${FRAME.y}" x2="0" y2="${FRAME.y + FRAME.h}">
         <stop offset="0" stop-color="#1c1d21"/><stop offset="0.5" stop-color="#0e0e10"/><stop offset="1" stop-color="#060607"/>
       </linearGradient>
       <clipPath id="tachClip"><circle cx="${RPM.cx}" cy="${RPM.cy}" r="${RPM.face}"/></clipPath>
     </defs>
 `;
 
-    // ----- rumah / frame: membungkus ketiga gauge dengan padding & jarak yang sama -----
-    s += `<rect x="${FRAME.x}" y="${FRAME.y}" width="${FRAME.w}" height="${FRAME.h}" rx="${FRAME.r}" fill="url(#housingG)"/>
-    <rect x="${FRAME.x + 1}" y="${FRAME.y + 1}" width="${FRAME.w - 2}" height="${FRAME.h - 2}" rx="${FRAME.r - 1}" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="2"/>
-    <rect x="${FRAME.x + 10}" y="${FRAME.y + 10}" width="${FRAME.w - 20}" height="${FRAME.h - 20}" rx="${FRAME.r - 10}" fill="none" stroke="rgba(0,0,0,0.6)" stroke-width="3"/>`;
+    // ----- rumah / frame: mengikuti bentuk gauge (lingkaran tiap gauge + jembatan penyambung) -----
+    const HP = LAYOUT.pad;                                         // tebal rumah di sekeliling bezel
+    const C = {                                                    // pusat & radius rumah tiap gauge (koordinat akhir)
+        rpm:  [RPM.cx + SHIFT.rpm[0],   LAYOUT.midY, RPM.bezel + HP],
+        spd:  [SPD.cx + SHIFT.spd[0],   LAYOUT.midY, SPD.bezel + HP],
+        fuel: [FUEL.cx + SHIFT.fuel[0], LAYOUT.midY, FUEL.bezel + HP],
+    };
+    const bridge = (a, b, h) => `<rect x="${a[0]}" y="${LAYOUT.midY - h / 2}" width="${b[0] - a[0]}" height="${h}"/>`;
+    const hShape = Object.values(C).map(([x, y, r]) => `<circle cx="${x}" cy="${y}" r="${r}"/>`).join('')
+        + bridge(C.rpm, C.spd, 260) + bridge(C.spd, C.fuel, 225);
+    s += `<g id="housing-shape" fill="none" stroke="rgba(255,255,255,0.14)" stroke-width="5" stroke-linejoin="round">${hShape}</g>
+    <g fill="url(#housingG)">${hShape}</g>`;
 
     // tiap gauge digambar utuh (bezel, skala, ikon, jarum) lalu digeser ke posisinya
     const place = (k, inner) => `<g transform="translate(${SHIFT[k][0]} ${SHIFT[k][1]})">${inner}</g>`;
