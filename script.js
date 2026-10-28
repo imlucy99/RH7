@@ -40,10 +40,10 @@ const clamp01 = (v) => Math.max(0, Math.min(1, v));
 // ---------- Geometri (koordinat mengikuti gambar referensi 1774x887) ----------
 // SPD: cx/cy = pusat jarum; by/sy = pusat & penyempitan vertikal bezel (bentuk oval seperti aslinya)
 const SPD = { cx: 918,  cy: 452, by: 440, sy: 0.965, bezel: 326, ring: 317, face: 311, a0: 144, sweep: 252 };
-const RPM = { cx: 310,  cy: 478, bezel: 252, ring: 239, face: 229, a0: 135, sweep: 225 };
+const RPM = { cx: 318,  cy: 478, bezel: 252, ring: 239, face: 229, a0: 135, sweep: 225 };
 // FUEL: E (bawah, 80deg) -> F (atas, -80deg) lewat sisi kanan | OIL: 0 (kiri) -> 120 (kanan)
-const FUEL = { cx: 1420, cy: 273, bezel: 140, ring: 128, face: 119, a0: 80,  sweep: -160, r: 108 };
-const OIL  = { cx: 1490, cy: 589, bezel: 148, ring: 136, face: 127, a0: 168, sweep: 204,  r: 118 };
+const FUEL = { cx: 1415, cy: 285, bezel: 140, ring: 128, face: 119, a0: 80,  sweep: -160, r: 108 };
+const OIL  = { cx: 1415, cy: 585, bezel: 148, ring: 136, face: 127, a0: 168, sweep: 204,  r: 118 };
 
 const pol = (cx, cy, r, a) => {
     const t = (a * Math.PI) / 180;
@@ -71,6 +71,7 @@ function bezelFace(g) {
     const by = g.by || g.cy, sy = g.sy || 1;
     return `
     <g transform="translate(${g.cx} ${by}) scale(1 ${sy}) translate(${-g.cx} ${-by})">
+      <circle cx="${g.cx}" cy="${by}" r="${g.bezel + 14}" fill="url(#haloG)"/>
       <circle cx="${g.cx}" cy="${by}" r="${g.bezel}" fill="#050506"/>
       <circle cx="${g.cx}" cy="${by}" r="${g.bezel - 4}" fill="none" stroke="url(#chrome)" stroke-width="3" opacity="0.5"/>
       <circle cx="${g.cx}" cy="${by}" r="${g.ring}" fill="none" stroke="url(#chrome)" stroke-width="9"/>
@@ -79,21 +80,6 @@ function bezelFace(g) {
       <circle cx="${g.cx}" cy="${by}" r="${g.face}" fill="url(#glassG)"/>
       <circle class="edge lit" cx="${g.cx}" cy="${by}" r="${g.face - 1.5}" fill="none" stroke="#c8181c" stroke-width="2.5"/>
     </g>`;
-}
-
-// Rumah cluster polos: satu siluet yang membungkus keempat gauge (tacho bulat, speedo oval besar, fuel & oil di kanan)
-const HOUSING_PAD = 18;
-function housingPath() {
-    const pt = (g, deg) => {
-        const by = g.by || g.cy, r = g.bezel + HOUSING_PAD, t = (deg * Math.PI) / 180;
-        return [g.cx + r * Math.cos(t), by + r * (g.sy || 1) * Math.sin(t)].map((v) => v.toFixed(1)).join(' ');
-    };
-    const arc = (g, d1, d2) => {
-        const r = g.bezel + HOUSING_PAD;
-        return `A${r} ${(r * (g.sy || 1)).toFixed(1)} 0 ${Math.abs(d2 - d1) > 180 ? 1 : 0} 1 ${pt(g, d2)}`;
-    };
-    return `M${pt(RPM, 180)}${arc(RPM, 180, 280)}L${pt(SPD, 225)}${arc(SPD, 225, 315)}L${pt(FUEL, 230)}${arc(FUEL, 230, 380)}` +
-           `L${pt(OIL, 310)}${arc(OIL, 310, 460)}L${pt(SPD, 70)}${arc(SPD, 70, 110)}L${pt(RPM, 70)}${arc(RPM, 70, 180)}Z`;
 }
 
 // Jarum + hub hitam. Lapisan: glow lebar, glow sempit, badan jarum, garis inti terang
@@ -163,9 +149,11 @@ function buildDial() {
       <radialGradient id="hubG" cx="0.4" cy="0.35" r="0.75">
         <stop offset="0" stop-color="#3a3b40"/><stop offset="0.6" stop-color="#0c0c0e"/><stop offset="1" stop-color="#030304"/>
       </radialGradient>
+      <radialGradient id="haloG" cx="0.5" cy="0.5" r="0.5">
+        <stop offset="0.9" stop-color="#000" stop-opacity="0.55"/><stop offset="1" stop-color="#000" stop-opacity="0"/>
+      </radialGradient>
       <filter id="bloom" x="-25%" y="-25%" width="150%" height="150%"><feGaussianBlur stdDeviation="6"/></filter>
-    </defs>
-    <path class="housing" d="${housingPath()}"/>`;
+    </defs>`;
 
     // ===================== TACHO (kiri) =====================
     s += bezelFace(RPM);

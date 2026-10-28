@@ -42,7 +42,7 @@ html, body {
     right: var(--offset-right);
     bottom: var(--offset-bottom);
     width: 1000px;
-    height: 418px;
+    height: 434px;
     transform: scale(var(--scale));
     transform-origin: bottom right;
 }
@@ -106,8 +106,6 @@ body.preview .hud-wrap {
 }
 .dial .lbl { font-family: var(--ui); font-weight: 700; font-style: italic; fill: var(--ink); text-anchor: middle; dominant-baseline: central; }
 .dial .lbl.up { font-style: normal; letter-spacing: 0.5px; }
-/* rumah cluster: polos, satu warna + garis tepi tipis */
-.dial .housing { fill: #0b0b0d; stroke: rgba(255, 255, 255, 0.18); stroke-width: 2; stroke-linejoin: round; }
 .dial .zone { fill: var(--zone); }
 .dial .zone-glow { fill: var(--zone); opacity: 0.75; }
 .dial .arc-red { fill: none; stroke: var(--zone); stroke-width: 8; }
