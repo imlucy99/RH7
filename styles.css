@@ -42,7 +42,7 @@ html, body {
     right: var(--offset-right);
     bottom: var(--offset-bottom);
     width: 1000px;
-    height: 395px;
+    height: 409px;
     transform: scale(var(--scale));
     transform-origin: bottom right;
 }

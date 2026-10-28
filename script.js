@@ -40,10 +40,10 @@ const clamp01 = (v) => Math.max(0, Math.min(1, v));
 // ---------- Geometri (koordinat mengikuti gambar referensi 1774x887) ----------
 // SPD: cx/cy = pusat jarum; by/sy = pusat & penyempitan vertikal bezel (bentuk oval seperti aslinya)
 const SPD = { cx: 918,  cy: 452, by: 440, sy: 0.965, bezel: 326, ring: 317, face: 311, a0: 144, sweep: 252 };
-const RPM = { cx: 345,  cy: 478, bezel: 252, ring: 239, face: 229, a0: 135, sweep: 225 };
+const RPM = { cx: 310,  cy: 478, bezel: 252, ring: 239, face: 229, a0: 135, sweep: 225 };
 // FUEL: E (bawah, 80deg) -> F (atas, -80deg) lewat sisi kanan | OIL: 0 (kiri) -> 120 (kanan)
-const FUEL = { cx: 1430, cy: 360, bezel: 140, ring: 128, face: 119, a0: 80,  sweep: -160, r: 108 };
-const OIL  = { cx: 1580, cy: 594, bezel: 148, ring: 136, face: 127, a0: 168, sweep: 204,  r: 118 };
+const FUEL = { cx: 1420, cy: 273, bezel: 140, ring: 128, face: 119, a0: 80,  sweep: -160, r: 108 };
+const OIL  = { cx: 1490, cy: 589, bezel: 148, ring: 136, face: 127, a0: 168, sweep: 204,  r: 118 };
 
 const pol = (cx, cy, r, a) => {
     const t = (a * Math.PI) / 180;
@@ -71,8 +71,7 @@ function bezelFace(g) {
     const by = g.by || g.cy, sy = g.sy || 1;
     return `
     <g transform="translate(${g.cx} ${by}) scale(1 ${sy}) translate(${-g.cx} ${-by})">
-      <circle cx="${g.cx}" cy="${by}" r="${g.bezel + 12}" fill="#0b0b0d" stroke="rgba(255,255,255,0.16)" stroke-width="2"/>
-      <circle cx="${g.cx}" cy="${by}" r="${g.bezel + 5}" fill="none" stroke="#000" stroke-opacity="0.7" stroke-width="5"/>
+      <circle cx="${g.cx}" cy="${by}" r="${g.bezel + 8}" fill="#0b0b0d" stroke="rgba(255,255,255,0.14)" stroke-width="1.5"/>
       <circle cx="${g.cx}" cy="${by}" r="${g.bezel}" fill="#050506"/>
       <circle cx="${g.cx}" cy="${by}" r="${g.bezel - 4}" fill="none" stroke="url(#chrome)" stroke-width="3" opacity="0.5"/>
       <circle cx="${g.cx}" cy="${by}" r="${g.ring}" fill="none" stroke="url(#chrome)" stroke-width="9"/>
@@ -166,8 +165,8 @@ function buildDial() {
         const [x, y] = pol(RPM.cx, RPM.cy, 168, rA(v));
         s += txt('num', x, y, 42, v);
     }
-    s += logo(357, 398, 30) + txt('lbl', 357, 538, 24, 'x1000r/min');
-    s += `<text class="gtr" x="357" y="632" font-size="52">RH-<tspan class="n7">7</tspan></text>`;
+    s += logo(RPM.cx + 12, RPM.cy - 80, 30) + txt('lbl', RPM.cx + 12, RPM.cy + 60, 24, 'x1000r/min');
+    s += `<text class="gtr" x="${RPM.cx + 12}" y="${RPM.cy + 154}" font-size="52">RH-<tspan class="n7">7</tspan></text>`;
     s += `</g>`;
 
     // ===================== FUEL (kanan atas) =====================
@@ -178,10 +177,10 @@ function buildDial() {
         s += tick(FUEL.cx, FUEL.cy, fA(f), FUEL.r - (major ? 20 : mid ? 15 : 9), FUEL.r, major ? 4.2 : mid ? 3 : 2, i <= 2 ? 'red' : '');
     }
     s += `<path class="arc-red" d="${arcPath(FUEL.cx, FUEL.cy, FUEL.r - 3, fA(0), fA(0.14))}"/>`;
-    s += txt('num', 1411, 282, 28, 'F') + txt('num', 1411, 458, 28, 'E');
-    s += `<line class="tk" x1="1318" y1="360" x2="1334" y2="360" stroke-width="4"/>`;
-    s += icon('fuel-ico', 'gauge-ico', 1352, 342, 1.5, ICON_FUEL);
-    s += logo(1430, 420, 18);
+    s += txt('num', FUEL.cx - 19, FUEL.cy - 78, 28, 'F') + txt('num', FUEL.cx - 19, FUEL.cy + 98, 28, 'E');
+    s += `<line class="tk" x1="${FUEL.cx - 112}" y1="${FUEL.cy}" x2="${FUEL.cx - 96}" y2="${FUEL.cy}" stroke-width="4"/>`;
+    s += icon('fuel-ico', 'gauge-ico', FUEL.cx - 78, FUEL.cy - 18, 1.5, ICON_FUEL);
+    s += logo(FUEL.cx, FUEL.cy + 60, 18);
     s += `</g>`;
 
     // ===================== OIL PRESS (kanan bawah, di atas fuel) =====================
@@ -196,8 +195,8 @@ function buildDial() {
         const [x, y] = pol(OIL.cx, OIL.cy, 76, oA(p));
         s += txt('num', x, y, 24, p);
     }
-    s += icon('oil-ico', 'gauge-ico', 1562, 621, 1.5, ICON_OIL);
-    s += txt('lbl up', 1580, 674, 18, 'OIL PRESS') + txt('lbl up', 1580, 699, 15, 'PSI');
+    s += icon('oil-ico', 'gauge-ico', OIL.cx - 18, OIL.cy + 27, 1.5, ICON_OIL);
+    s += txt('lbl up', OIL.cx, OIL.cy + 80, 18, 'OIL PRESS') + txt('lbl up', OIL.cx, OIL.cy + 105, 15, 'PSI');
     s += `</g>`;
 
     // ===================== SPEEDO (tengah) =====================
@@ -282,9 +281,10 @@ function frame(now) {
 
     // Sapuan jarum saat kontak ON: 0 -> max -> 0
     const booting = now < bootUntil;
-    let sw = 0;
+    let sw = 0, rise = false;
     if (booting) {
         const t = 1 - (bootUntil - now) / BOOT_MS;
+        rise = t < 0.45;
         sw = t < 0.45 ? t / 0.45 : t < 0.55 ? 1 : Math.max(0, 1 - (t - 0.55) / 0.45);
     }
 
@@ -296,7 +296,7 @@ function frame(now) {
         const cut = Math.sin((now / 1000) * 2 * Math.PI * 11) > 0;
         tRpm = rpmFrac - (cut ? 0.035 + Math.random() * 0.02 : Math.random() * 0.01);
     }
-    const tFuel = booting ? Math.max(sw, state.fuel) : state.engine ? state.fuel : 0;
+    const tFuel = booting ? (rise ? sw : state.fuel + (1 - state.fuel) * sw) : state.engine ? state.fuel : 0;   // E -> F -> level bensin
     const tOil = booting ? sw : state.engine ? clamp01(state.health * (OIL_FULL / OIL_MAX)) : 0;
 
     const kf = booting ? 1 : Math.min(1, dt * (limiter ? 45 : 12)), ks = booting ? 1 : Math.min(1, dt * 4);
