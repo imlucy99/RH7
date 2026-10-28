@@ -71,7 +71,6 @@ function bezelFace(g) {
     const by = g.by || g.cy, sy = g.sy || 1;
     return `
     <g transform="translate(${g.cx} ${by}) scale(1 ${sy}) translate(${-g.cx} ${-by})">
-      <circle cx="${g.cx}" cy="${by}" r="${g.bezel + 8}" fill="#0b0b0d" stroke="rgba(255,255,255,0.14)" stroke-width="1.5"/>
       <circle cx="${g.cx}" cy="${by}" r="${g.bezel}" fill="#050506"/>
       <circle cx="${g.cx}" cy="${by}" r="${g.bezel - 4}" fill="none" stroke="url(#chrome)" stroke-width="3" opacity="0.5"/>
       <circle cx="${g.cx}" cy="${by}" r="${g.ring}" fill="none" stroke="url(#chrome)" stroke-width="9"/>
@@ -80,6 +79,21 @@ function bezelFace(g) {
       <circle cx="${g.cx}" cy="${by}" r="${g.face}" fill="url(#glassG)"/>
       <circle class="edge lit" cx="${g.cx}" cy="${by}" r="${g.face - 1.5}" fill="none" stroke="#c8181c" stroke-width="2.5"/>
     </g>`;
+}
+
+// Rumah cluster polos: satu siluet yang membungkus keempat gauge (tacho bulat, speedo oval besar, fuel & oil di kanan)
+const HOUSING_PAD = 18;
+function housingPath() {
+    const pt = (g, deg) => {
+        const by = g.by || g.cy, r = g.bezel + HOUSING_PAD, t = (deg * Math.PI) / 180;
+        return [g.cx + r * Math.cos(t), by + r * (g.sy || 1) * Math.sin(t)].map((v) => v.toFixed(1)).join(' ');
+    };
+    const arc = (g, d1, d2) => {
+        const r = g.bezel + HOUSING_PAD;
+        return `A${r} ${(r * (g.sy || 1)).toFixed(1)} 0 ${Math.abs(d2 - d1) > 180 ? 1 : 0} 1 ${pt(g, d2)}`;
+    };
+    return `M${pt(RPM, 180)}${arc(RPM, 180, 280)}L${pt(SPD, 225)}${arc(SPD, 225, 315)}L${pt(FUEL, 230)}${arc(FUEL, 230, 380)}` +
+           `L${pt(OIL, 310)}${arc(OIL, 310, 460)}L${pt(SPD, 70)}${arc(SPD, 70, 110)}L${pt(RPM, 70)}${arc(RPM, 70, 180)}Z`;
 }
 
 // Jarum + hub hitam. Lapisan: glow lebar, glow sempit, badan jarum, garis inti terang
@@ -150,7 +164,8 @@ function buildDial() {
         <stop offset="0" stop-color="#3a3b40"/><stop offset="0.6" stop-color="#0c0c0e"/><stop offset="1" stop-color="#030304"/>
       </radialGradient>
       <filter id="bloom" x="-25%" y="-25%" width="150%" height="150%"><feGaussianBlur stdDeviation="6"/></filter>
-    </defs>`;
+    </defs>
+    <path class="housing" d="${housingPath()}"/>`;
 
     // ===================== TACHO (kiri) =====================
     s += bezelFace(RPM);
