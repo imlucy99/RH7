@@ -22,7 +22,7 @@ const REDLINE = 7.6;        // mulai zona merah (x1000)
 const LIMITER = 0.96;       // RPM (0-1) mulai dianggap kena limiter -> jarum geter
 const OIL_MAX = 100;        // skala oil press (PSI)
 const OIL_FULL = 100;        // PSI yang ditunjuk saat health = 1.0 (normal)
-const OIL_RED = 30;        // mulai zona merah oil (PSI)
+const OIL_RED = 80;        // mulai zona merah oil (PSI)
 
 const NOOP_EL = document.createElement('div');   // pengaman kalau ada elemen yang dihapus dari HTML
 const $ = (id) => document.getElementById(id) || NOOP_EL;
