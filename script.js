@@ -1,26 +1,29 @@
 /* =========================================================
-   JGVRP Speedometer HUD  (cluster analog RH-7: HSW tacho + speedo + fuel)
+   JGVRP Speedometer HUD  -  Nissan Skyline GT-R R34 NISMO (Optitron)
    API (dipanggil dari game / CEF):
-     setSpeed(m/s)            setRPM(0.0 - 1.0)   (1.0 = RPM_FULL x1000 rpm)
-     setFuel(0-1 | 0-100)     -> jarum FUEL (kubah kecil di dalam speedo)
-     setHealth(0-1 | 0-1000)  -> jarum OIL PSI (kubah kecil di dalam gauge RPM)
+     setSpeed(m/s)            setRPM(0.0 - 1.0)   (1.0 = RPM_FULL x1000, lihat konstanta)
+     setFuel(0-1 | 0-100)     setHealth(0-1 | 0-1000)  -> jarum OIL PRESS (PSI)
      setGear(n)               setHeadlights(0 off | 1 low | 2 high)
      setSeatbelts(bool)       updateLockStatus(state)
      setOdometer(miles)       setEngine(bool)
-   Efek:
-     setEngine(true)  -> dial terang, ODO LCD menyala + jarum menyapu (kontak ON)
-     setEngine(false) -> muka dial redup, ODO LCD mati total seperti layar mati
-     setHeadlights(1|2) -> semua jarum menyala (glow), seperti lampu dashboard asli
+     setDimmer(0.15-1 | 15-100)   (alias: setBrightness)  -> kecerahan lampu dial
+   Optitron:
+     setEngine(true)    -> ignition wake-up: dial menyala bertahap + jarum menyapu
+     (normal)           -> angka putih menyala, jarum merah menyala + glow
+     setHeadlights(1|2) -> dial otomatis meredup (NIGHT_LUM x dimmer)
+     setEngine(false)   -> shutdown: jarum turun, cahaya dial memudar pelan
    ========================================================= */
 
 const MPS_TO_MPH = 2.236936;
-const MAX_MPH = 200;          // skala speedometer
-const MAX_RPM = 11;           // skala tachometer (x1000), sesuai gambar 0-11
-const RPM_FULL = 9;           // setRPM(1.0) = 9000 rpm (ubah kalau mau jarum lebih tinggi / rendah)
-const REDLINE = 8;            // mulai zona merah (x1000)
-const LIMITER = 0.96;         // RPM (0-1) mulai dianggap kena limiter -> jarum geter
-const OIL_MAX = 120;          // skala oil PSI di dalam gauge RPM
-const OIL_FULL_PSI = 60;      // setHealth penuh = 60 PSI (ubah kalau mau jarum lebih tinggi / rendah)
+const MAX_MPH = 200;
+const MAX_RPM = 10;         // skala tachometer (x1000)
+const RPM_FULL = 9;         // putaran (x1000) yang ditunjuk jarum saat setRPM(1.0)
+const REDLINE = 7.6;        // mulai zona merah (x1000)
+const LIMITER = 0.96;       // RPM (0-1) mulai dianggap kena limiter -> jarum geter
+const OIL_MAX = 120;        // skala oil press (PSI)
+const OIL_FULL = 80;        // PSI yang ditunjuk saat health = 1.0 (normal)
+const OIL_RED = 100;        // mulai zona merah oil (PSI)
+const NIGHT_LUM = 0.7;      // faktor redup otomatis saat lampu depan nyala
 
 const NOOP_EL = document.createElement('div');   // pengaman kalau ada elemen yang dihapus dari HTML
 const $ = (id) => document.getElementById(id) || NOOP_EL;
@@ -35,25 +38,13 @@ function isTrueValue(val) {
 }
 const clamp01 = (v) => Math.max(0, Math.min(1, v));
 
-// ---------- Geometri (koordinat mengikuti gambar referensi 1964x801) ----------
-const SPD  = { cx: 1032, cy: 390, bezel: 286, ring: 270, face: 260, a0: 150, sweep: 240 };
-const RPM  = { cx: 495,  cy: 398, bezel: 270, ring: 254, face: 238, a0: 150, sweep: 240 };
-// fuel: busur berpusat di (cx,cy); jarum berputar di hub (hx,hy) lalu diarahkan ke titik busur
-// fuel: kubah hitam kecil di bagian bawah speedo (gaya oil PSI); jarum berputar di hub kecil lalu diarahkan ke titik busur
-const FUEL = { cx: SPD.cx, cy: 650, dome: 136, hx: SPD.cx, hy: 604, a0: 210, sweep: 120 };
-// oil PSI: busur berpusat di bawah (cx,cy), jarum berputar di hub kecil (hx,hy)
-const OIL  = { cx: RPM.cx, cy: 655, dome: 192, hx: RPM.cx, hy: 600, a0: 210, sweep: 120 };   // skala dipusatkan di hub -> jarum panjang tetap
-
-// ---------- Tata letak: posisi asli tiap gauge (ukuran & tinggi beda-beda), dibungkus satu rumah berkontur ----------
-const HP = 34;                                                      // tebal rumah di sekeliling bezel
-const SHIFT = { rpm: [0, 0], spd: [0, 0] };                         // tidak ada pergeseran
-const FRAME = {
-    x: RPM.cx - RPM.bezel - HP, y: SPD.cy - SPD.bezel - HP,
-    w: (SPD.cx + SPD.bezel + HP) - (RPM.cx - RPM.bezel - HP),
-    h: (SPD.bezel + HP) * 2,
-};
-const VIEW = [FRAME.x - 10, FRAME.y - 10, FRAME.w + 20, FRAME.h + 20];
-svg.setAttribute('viewBox', VIEW.join(' '));
+// ---------- Geometri (koordinat mengikuti gambar referensi 1774x887) ----------
+// SPD: cx/cy = pusat jarum; by/sy = pusat & penyempitan vertikal bezel (bentuk oval seperti aslinya)
+const SPD = { cx: 918,  cy: 452, by: 440, sy: 0.965, bezel: 326, ring: 317, face: 311, a0: 144, sweep: 252 };
+const RPM = { cx: 345,  cy: 478, bezel: 252, ring: 239, face: 229, a0: 135, sweep: 225 };
+// FUEL: E (bawah, 80deg) -> F (atas, -80deg) lewat sisi kanan | OIL: 0 (kiri) -> 120 (kanan)
+const FUEL = { cx: 1430, cy: 360, bezel: 140, ring: 128, face: 119, a0: 80,  sweep: -160, r: 108 };
+const OIL  = { cx: 1580, cy: 594, bezel: 148, ring: 136, face: 127, a0: 168, sweep: 204,  r: 118 };
 
 const pol = (cx, cy, r, a) => {
     const t = (a * Math.PI) / 180;
@@ -71,34 +62,41 @@ function arcPath(cx, cy, r, a1, a2) {
 }
 const tick = (cx, cy, a, r1, r2, w, cls) => {
     const [x1, y1] = pol(cx, cy, r1, a), [x2, y2] = pol(cx, cy, r2, a);
-    return `<line class="${cls || 'tk'}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke-width="${w}"/>`;
+    return `<line class="tk${cls ? ' ' + cls : ''}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke-width="${w}"/>`;
 };
 const txt = (cls, x, y, size, s) => `<text class="${cls}" x="${x}" y="${y}" font-size="${size}">${s}</text>`;
+const logo = (x, y, size) => `<text class="logo" x="${x}" y="${y}" font-size="${size}">nism<tspan class="o">o</tspan></text>`;
 
-// Bezel hitam + ring krom tipis + muka dial putih
+// Bezel hitam + ring krom + tepi merah + muka dial hitam (Optitron)
 function bezelFace(g) {
+    const by = g.by || g.cy, sy = g.sy || 1;
     return `
-    <circle cx="${g.cx}" cy="${g.cy}" r="${g.bezel}" fill="url(#bezelG)"/>
-    <circle cx="${g.cx}" cy="${g.cy}" r="${g.bezel - 2}" fill="none" stroke="rgba(255,255,255,0.16)" stroke-width="2"/>
-    <circle cx="${g.cx}" cy="${g.cy}" r="${g.bezel - 15}" fill="#050506"/>
-    <circle cx="${g.cx}" cy="${g.cy}" r="${g.ring}" fill="none" stroke="url(#chrome)" stroke-width="5"/>
-    <circle cx="${g.cx}" cy="${g.cy}" r="${g.ring - 4}" fill="#09090a"/>
-    <circle cx="${g.cx}" cy="${g.cy}" r="${g.face}" fill="url(#faceG)"/>
-    <circle cx="${g.cx}" cy="${g.cy}" r="${g.face - 6}" fill="none" stroke="rgba(0,0,0,0.09)" stroke-width="12"/>`;
+    <g transform="translate(${g.cx} ${by}) scale(1 ${sy}) translate(${-g.cx} ${-by})">
+      <circle cx="${g.cx}" cy="${by}" r="${g.bezel}" fill="#050506"/>
+      <circle cx="${g.cx}" cy="${by}" r="${g.bezel - 4}" fill="none" stroke="url(#chrome)" stroke-width="3" opacity="0.5"/>
+      <circle cx="${g.cx}" cy="${by}" r="${g.ring}" fill="none" stroke="url(#chrome)" stroke-width="9"/>
+      <circle cx="${g.cx}" cy="${by}" r="${g.ring - 7}" fill="#0a0a0c"/>
+      <circle cx="${g.cx}" cy="${by}" r="${g.face}" fill="url(#faceG)"/>
+      <circle cx="${g.cx}" cy="${by}" r="${g.face}" fill="url(#glassG)"/>
+      <circle class="edge lit" cx="${g.cx}" cy="${by}" r="${g.face - 1.5}" fill="none" stroke="#c8181c" stroke-width="2.5"/>
+    </g>`;
 }
-const shade = (g) => `<circle class="shade" cx="${g.cx}" cy="${g.cy}" r="${g.face}"/>`;
 
-// Jarum merah meruncing + hub hitam. L = panjang dasar, tail = ekor di belakang hub
-function needle(id, x, y, L, tail, w0, hubR) {
+// Jarum + hub hitam. Lapisan: glow lebar, glow sempit, badan jarum, garis inti terang
+function needle(id, g, L, hubR, w) {
+    const t = hubR - 8;
+    const d = `M${-t} ${-w * 0.65}L0 ${-w}L${L} -1.4L${L} 1.4L0 ${w}L${-t} ${w * 0.65}Z`;
     return `
-    <g id="${id}" transform="translate(${x} ${y}) rotate(0) scale(1 1)">
-      <path class="ndl" d="M${-tail} ${-w0 * 0.7}L0 ${-w0}L${L} -1.3L${L} 1.3L0 ${w0}L${-tail} ${w0 * 0.7}Z"/>
-      <path class="ndl-hi" d="M${-tail + 8} ${-w0 * 0.3}L${L - 10} -0.3"/>
+    <g id="${id}" transform="translate(${g.cx} ${g.cy}) rotate(0)">
+      <path class="ndl-glow g2" d="${d}"/>
+      <path class="ndl-glow g1" d="${d}"/>
+      <path class="ndl" d="${d}"/>
+      <line class="ndl-core" x1="${hubR}" y1="0" x2="${L - 5}" y2="0"/>
     </g>
-    <circle cx="${x}" cy="${y}" r="${hubR}" fill="url(#hubG)"/>
-    <circle class="hub-ring" cx="${x}" cy="${y}" r="${hubR - 1}"/>
-    <circle cx="${x}" cy="${y}" r="${hubR}" fill="none" stroke="rgba(255,255,255,0.14)" stroke-width="2"/>
-    <ellipse cx="${x - hubR * 0.22}" cy="${y - hubR * 0.45}" rx="${hubR * 0.5}" ry="${hubR * 0.2}" fill="rgba(255,255,255,0.09)"/>`;
+    <circle cx="${g.cx}" cy="${g.cy}" r="${hubR}" fill="url(#hubG)"/>
+    <circle class="hub-ring" cx="${g.cx}" cy="${g.cy}" r="${hubR - 1}"/>
+    <circle cx="${g.cx}" cy="${g.cy}" r="${hubR}" fill="none" stroke="rgba(255,255,255,0.16)" stroke-width="2"/>
+    <line x1="${g.cx - hubR * 0.62}" y1="${g.cy + hubR * 0.36}" x2="${g.cx + hubR * 0.62}" y2="${g.cy - hubR * 0.36}" stroke="rgba(255,255,255,0.13)" stroke-width="4"/>`;
 }
 
 // Ikon (viewBox 24x24) ditaruh di (x,y) dengan skala s
@@ -115,169 +113,147 @@ const ICON_SEATBELT = `
     <path d="M9 8.5l7.5 10"/>`;
 const ICON_LOCK = `
     <rect x="5" y="11" width="14" height="10" rx="2" fill="currentColor" stroke="none"/>
-    <circle cx="12" cy="15.2" r="1.4" fill="#f4f1ec" stroke="none"/>
+    <circle cx="12" cy="15.2" r="1.4" fill="#0b0b0d" stroke="none"/>
     <path class="shackle-closed" d="M8 11V8a4 4 0 0 1 8 0v3"/>
     <path class="shackle-open" d="M8 11V8a4 4 0 0 1 7.4-2.1"/>`;
 const ICON_FUEL = `<path fill="currentColor" stroke="none" d="M19.77 7.23l.01-.01-3.72-3.72L15 4.56l2.11 2.11c-.94.36-1.61 1.26-1.61 2.33 0 1.38 1.12 2.5 2.5 2.5.36 0 .69-.08 1-.21v7.21c0 .55-.45 1-1 1s-1-.45-1-1V14c0-1.1-.9-2-2-2h-1V5c0-1.1-.9-2-2-2H6c-1.1 0-2 .9-2 2v16h10v-7.5h1.5v5c0 1.38 1.12 2.5 2.5 2.5s2.5-1.12 2.5-2.5V9c0-.69-.28-1.32-.73-1.77zM12 10H6V5h6v5zm6 0c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1z"/>`;
 const ICON_OIL = `<path fill="currentColor" stroke="none" d="M2.5 10h4.2l1.3-2h2V6.5H8V5h6v1.5h-2V8h2.5l2 1.8 5-2.8 1 1.2-6.6 7.3H8.4L7 13H2.5zM20.2 14.6c0-.9 1.1-2.3 1.1-2.3s1.1 1.4 1.1 2.3c0 .6-.5 1.1-1.1 1.1s-1.1-.5-1.1-1.1z"/>`;
 
-// ---------- ODO LCD 7-segment (6 digit: 5 digit + 1 desimal) ----------
-const ODO_N = 6;
-const LCD = { x0: SPD.cx - 74, y: SPD.cy + 71, pitch: 25, sc: 0.74 };   // 6 digit tepat di tengah speedo
-const SEG_ON = ['abcdef', 'bc', 'abdeg', 'abcdg', 'bcfg', 'acdfg', 'acdefg', 'abc', 'abcdefg', 'abcdfg'];
-function segPolys() {
-    const xl = 3, xr = 23, yt = 3, ym = 21, yb = 39, t = 4.6, g = 2.4;
-    const h = (x, y, l) => `${x},${y} ${x + t / 2},${y - t / 2} ${x + l - t / 2},${y - t / 2} ${x + l},${y} ${x + l - t / 2},${y + t / 2} ${x + t / 2},${y + t / 2}`;
-    const v = (x, y, l) => `${x},${y} ${x + t / 2},${y + t / 2} ${x + t / 2},${y + l - t / 2} ${x},${y + l} ${x - t / 2},${y + l - t / 2} ${x - t / 2},${y + t / 2}`;
-    const lh = xr - xl - 2 * g, lv = ym - yt - 2 * g;
-    return {
-        a: h(xl + g, yt, lh), g: h(xl + g, ym, lh), d: h(xl + g, yb, lh),
-        f: v(xl, yt + g, lv), b: v(xr, yt + g, lv), e: v(xl, ym + g, lv), c: v(xr, ym + g, lv),
-    };
-}
+// Jendela ODO (LCD): 6 drum, digit terakhir = desimal (1/10 mil)
+const ODO_N = 6, ODO_W = 26, ODO_ROW = 42, ODO_Y = 619, ODO_X0 = 840;
 
 function buildDial() {
-    const sA = (v) => SPD.a0 + (v / MAX_MPH) * SPD.sweep;      // sudut speedo
+    const sA = (v) => SPD.a0 + (v / MAX_MPH) * SPD.sweep;       // sudut speedo
     const rA = (v) => RPM.a0 + (v / MAX_RPM) * RPM.sweep;       // sudut tacho
-    const oA = (v) => OIL.a0 + (v / OIL_MAX) * OIL.sweep;       // sudut oil PSI
+    const fA = (f) => FUEL.a0 + f * FUEL.sweep;                 // sudut fuel (0 = E, 1 = F)
+    const oA = (p) => OIL.a0 + (p / OIL_MAX) * OIL.sweep;       // sudut oil (PSI)
     let s = `
     <defs>
       <linearGradient id="chrome" x1="0" y1="0" x2="1" y2="1">
-        <stop offset="0" stop-color="#ffffff"/><stop offset="0.35" stop-color="#6c6f76"/>
-        <stop offset="0.65" stop-color="#2a2b2f"/><stop offset="1" stop-color="#d9dbe0"/>
-      </linearGradient>
-      <linearGradient id="bezelG" x1="0" y1="0" x2="0.4" y2="1">
-        <stop offset="0" stop-color="#46484e"/><stop offset="0.35" stop-color="#17181b"/><stop offset="1" stop-color="#050506"/>
+        <stop offset="0" stop-color="#ffffff"/><stop offset="0.25" stop-color="#9a9da5"/>
+        <stop offset="0.5" stop-color="#2b2c31"/><stop offset="0.72" stop-color="#8b8e96"/><stop offset="1" stop-color="#ffffff"/>
       </linearGradient>
       <radialGradient id="faceG" cx="0.5" cy="0.5" r="0.5">
-        <stop offset="0.5" style="stop-color:var(--face-a)"/><stop offset="1" style="stop-color:var(--face-b)"/>
+        <stop offset="0.35" style="stop-color:var(--face-a)"/><stop offset="1" style="stop-color:var(--face-b)"/>
       </radialGradient>
+      <linearGradient id="glassG" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#fff" stop-opacity="0.11"/><stop offset="0.45" stop-color="#fff" stop-opacity="0"/>
+      </linearGradient>
+      <linearGradient id="housG" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#1b1c20"/><stop offset="0.5" stop-color="#0d0d10"/><stop offset="1" stop-color="#060607"/>
+      </linearGradient>
+      <linearGradient id="metalG" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#3a3c42"/><stop offset="1" stop-color="#0f1013"/>
+      </linearGradient>
+      <linearGradient id="gtG" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#7d818a"/>
+      </linearGradient>
+      <linearGradient id="drumShade" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#000" stop-opacity="0.6"/><stop offset="0.3" stop-color="#000" stop-opacity="0"/>
+        <stop offset="0.7" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity="0.6"/>
+      </linearGradient>
       <radialGradient id="hubG" cx="0.4" cy="0.35" r="0.75">
         <stop offset="0" stop-color="#3a3b40"/><stop offset="0.6" stop-color="#0c0c0e"/><stop offset="1" stop-color="#030304"/>
       </radialGradient>
-      <linearGradient id="domeG" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" stop-color="#202125"/><stop offset="0.5" stop-color="#0b0b0d"/><stop offset="1" stop-color="#030304"/>
-      </linearGradient>
-      <linearGradient id="lcdOn" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" stop-color="#454e41"/><stop offset="1" stop-color="#232a22"/>
-      </linearGradient>
-      <linearGradient id="lcdOff" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" stop-color="#121314"/><stop offset="1" stop-color="#060707"/>
-      </linearGradient>
-      <linearGradient id="gloss" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" stop-color="#fff" stop-opacity="0.16"/><stop offset="1" stop-color="#fff" stop-opacity="0"/>
-      </linearGradient>
-      <linearGradient id="housingG" gradientUnits="userSpaceOnUse" x1="0" y1="${FRAME.y}" x2="0" y2="${FRAME.y + FRAME.h}">
-        <stop offset="0" stop-color="#1c1d21"/><stop offset="0.5" stop-color="#0e0e10"/><stop offset="1" stop-color="#060607"/>
-      </linearGradient>
-      <clipPath id="spdClip"><circle cx="${SPD.cx}" cy="${SPD.cy}" r="${SPD.face}"/></clipPath>
-      <clipPath id="tachClip"><circle cx="${RPM.cx}" cy="${RPM.cy}" r="${RPM.face}"/></clipPath>
+      <filter id="bloom" x="-25%" y="-25%" width="150%" height="150%"><feGaussianBlur stdDeviation="6"/></filter>
     </defs>
-`;
 
-    // ----- rumah / frame: mengikuti bentuk gauge (lingkaran tiap gauge + jembatan penyambung) -----
-    const C = { rpm: [RPM.cx, RPM.cy, RPM.bezel + HP], spd: [SPD.cx, SPD.cy, SPD.bezel + HP] };
-    const bridge = (a, b, h, st) => `<line x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}" stroke="${st}" stroke-width="${h}"/>`;
-    const circles = Object.values(C).map(([x, y, r]) => `<circle cx="${x}" cy="${y}" r="${r}"/>`).join('');
-    const hOut = circles + bridge(C.rpm, C.spd, 306, 'rgba(255,255,255,0.14)');
-    const hFill = circles + bridge(C.rpm, C.spd, 300, 'url(#housingG)');
-    s += `<g fill="none" stroke="rgba(255,255,255,0.14)" stroke-width="5">${hOut}</g><g fill="url(#housingG)">${hFill}</g>`;
+    <!-- rumah cluster + panel logam -->
+    <path d="M70 440C70 340 150 238 275 224L535 214L600 188C700 146 805 120 918 120C1032 120 1140 146 1236 188L1295 212L1478 220C1600 232 1685 330 1712 415L1736 450C1738 560 1712 650 1650 722L1580 752L330 748C170 740 72 620 70 440Z" fill="url(#housG)" stroke="rgba(255,255,255,0.14)" stroke-width="2"/>
+    <polygon points="540,246 612,192 735,160 700,238" fill="url(#metalG)" opacity="0.8"/>
+    <polygon points="1140,196 1250,212 1296,246 1210,258" fill="url(#metalG)" opacity="0.8"/>
+    <polygon points="1566,298 1690,262 1728,430 1690,520 1572,474" fill="#101114" stroke="rgba(255,255,255,0.07)" stroke-width="2"/>
+    <polygon points="1215,596 1350,588 1405,636 1385,676 1215,676" fill="url(#metalG)" opacity="0.75"/>
+    <g class="lit g-spd">
+      <path class="accent" d="M545 656H640M1205 656H1330L1350 640"/>
+    </g>`;
 
-    // tiap gauge digambar utuh (bezel, skala, ikon, jarum) lalu digeser ke posisinya
-    const place = (k, inner) => `<g transform="translate(${SHIFT[k][0]} ${SHIFT[k][1]})">${inner}</g>`;
-
-    // =================== TACHO 0-11, zona merah 8-11 (kiri) ===================
-    let t = bezelFace(RPM);
-    t += `<path class="zone" d="${sector(RPM.cx, RPM.cy, 190, 224, rA(REDLINE), rA(MAX_RPM))}"/>`;
-    for (let i = 0; i <= 55; i++) {
-        const a = rA(i * 0.2), major = i % 5 === 0, inRed = i >= REDLINE * 5;
-        t += tick(RPM.cx, RPM.cy, a, major ? 190 : 208, 224, major ? 4.6 : 2.4, inRed ? 'tkw' : 'tk');
+    // ===================== TACHO (kiri) =====================
+    s += bezelFace(RPM);
+    s += `<g class="lit g-rpm">`;
+    s += `<path class="zone-glow" filter="url(#bloom)" d="${sector(RPM.cx, RPM.cy, 196, 226, rA(REDLINE), rA(MAX_RPM))}"/>`;
+    s += `<path class="zone" d="${sector(RPM.cx, RPM.cy, 196, 226, rA(REDLINE), rA(MAX_RPM))}"/>`;
+    for (let i = 0; i <= MAX_RPM * 5; i++) {
+        const major = i % 5 === 0;
+        s += tick(RPM.cx, RPM.cy, rA(i / 5), major ? 196 : 208, 222, major ? 4.6 : 2);
     }
     for (let v = 0; v <= MAX_RPM; v++) {
-        const [x, y] = pol(RPM.cx, RPM.cy, 150, rA(v));
-        t += txt('num', x, y, 40, v);
+        const [x, y] = pol(RPM.cx, RPM.cy, 168, rA(v));
+        s += txt('num', x, y, 42, v);
     }
-    t += txt('brand', RPM.cx, RPM.cy - 98, 34, 'HSW') + txt('lbl', RPM.cx, RPM.cy - 67, 19, 'x1000');
+    s += logo(357, 398, 30) + txt('lbl', 357, 538, 24, 'x1000r/min');
+    s += `<g class="gtr"><text class="gtr-gt" x="357" y="612" font-size="27">GT</text><text class="gtr-r" x="357" y="654" font-size="58">R</text></g>`;
+    s += `</g>`;
 
-    // OIL PSI: kubah hitam di dalam gauge RPM (jarum = setHealth), hub di tengah, ikon & PSI simetris di kiri/kanan hub
-    t += `<g clip-path="url(#tachClip)">
-      <circle cx="${OIL.cx}" cy="${OIL.cy}" r="${OIL.dome}" fill="url(#domeG)"/>
-      <circle cx="${OIL.cx}" cy="${OIL.cy}" r="${OIL.dome - 3}" fill="none" stroke="url(#chrome)" stroke-width="5" opacity="0.9"/>
-      <path class="dred" d="${arcPath(OIL.hx, OIL.hy, 122, oA(105), oA(OIL_MAX))}"/>`;
+    // ===================== FUEL (kanan atas) =====================
+    s += bezelFace(FUEL);
+    s += `<g class="lit g-aux">`;
+    for (let i = 0; i <= 16; i++) {
+        const f = i / 16, major = i % 8 === 0, mid = i % 4 === 0;
+        s += tick(FUEL.cx, FUEL.cy, fA(f), FUEL.r - (major ? 20 : mid ? 15 : 9), FUEL.r, major ? 4.2 : mid ? 3 : 2, i <= 2 ? 'red' : '');
+    }
+    s += `<path class="arc-red" d="${arcPath(FUEL.cx, FUEL.cy, FUEL.r - 3, fA(0), fA(0.14))}"/>`;
+    s += txt('num', 1411, 282, 28, 'F') + txt('num', 1411, 458, 28, 'E');
+    s += `<line class="tk" x1="1318" y1="360" x2="1334" y2="360" stroke-width="4"/>`;
+    s += icon('fuel-ico', 'gauge-ico', 1352, 342, 1.5, ICON_FUEL);
+    s += logo(1430, 420, 18);
+    s += `</g>`;
+
+    // ===================== OIL PRESS (kanan bawah, di atas fuel) =====================
+    s += bezelFace(OIL);
+    s += `<g class="lit g-aux">`;
     for (let p = 0; p <= OIL_MAX; p += 5) {
-        const major = p % 30 === 0, mid = p % 15 === 0, red = p >= 105;
-        t += tick(OIL.hx, OIL.hy, oA(p), major ? 98 : mid ? 103 : 108, 118, major ? 3.4 : mid ? 2.4 : 1.6, red ? 'dtk red' : 'dtk');
+        const major = p % 30 === 0, mid = p % 15 === 0;
+        s += tick(OIL.cx, OIL.cy, oA(p), OIL.r - (major ? 16 : mid ? 12 : 8), OIL.r, major ? 4.2 : mid ? 3 : 2, p >= OIL_RED ? 'red' : '');
     }
+    s += `<path class="arc-red" d="${arcPath(OIL.cx, OIL.cy, OIL.r - 4, oA(OIL_RED), oA(OIL_MAX))}"/>`;
     for (let p = 0; p <= OIL_MAX; p += 30) {
-        const [x, y] = pol(OIL.hx, OIL.hy, 78, oA(p));
-        t += txt('dnum', x, y, 25, p);
+        const [x, y] = pol(OIL.cx, OIL.cy, 76, oA(p));
+        s += txt('num', x, y, 24, p);
     }
-    t += txt('dlbl', OIL.hx + 64, OIL.hy, 17, 'PSI') + `</g>`;
-    t += shade(RPM);
-    t += icon('oil-ico', 'gauge-ico lt', OIL.hx - 64 - 16.8, OIL.hy - 16.8, 1.4, ICON_OIL);
-    t += `<circle cx="${RPM.cx - 78}" cy="${RPM.cy}" r="8" fill="url(#hubG)"/><circle cx="${RPM.cx + 78}" cy="${RPM.cy}" r="8" fill="url(#hubG)"/>`;
-    t += needle('nd-oil', OIL.hx, OIL.hy, 112, 24, 3.8, 18);
-    t += needle('nd-rpm', RPM.cx, RPM.cy, 215, 62, 7.5, 41);
-    s += place('rpm', t);
+    s += icon('oil-ico', 'gauge-ico', 1562, 621, 1.5, ICON_OIL);
+    s += txt('lbl up', 1580, 674, 18, 'OIL PRESS') + txt('lbl up', 1580, 699, 15, 'PSI');
+    s += `</g>`;
 
-    // =================== SPEEDO 0-200 + ODO (tengah) ===================
-    let v = bezelFace(SPD);
-    for (let i = 0; i <= 50; i++) {
-        const major = i % 5 === 0;
-        v += tick(SPD.cx, SPD.cy, sA(i * 4), major ? 214 : 234, 252, major ? 5 : 2.4);
+    // ===================== SPEEDO (tengah) =====================
+    s += bezelFace(SPD);
+    s += `<g class="lit g-spd">`;
+    for (let v = 0; v <= MAX_MPH; v += 2) {
+        const major = v % 20 === 0, mid = v % 10 === 0;
+        s += tick(SPD.cx, SPD.cy, sA(v), major ? 266 : mid ? 278 : 286, 300, major ? 5.5 : mid ? 3.4 : 2.1);
     }
-    for (let n = 0; n <= MAX_MPH; n += 20) {
-        const [x, y] = pol(SPD.cx, SPD.cy, 186, sA(n));
-        v += txt('num', x, y, 40, n);
+    for (let v = 0; v <= MAX_MPH; v += 20) {
+        const [x, y] = pol(SPD.cx, SPD.cy, 220, sA(v));
+        s += txt('num', x, y, 46, v);
     }
-    v += `<text class="brand" x="${SPD.cx + 4}" y="${SPD.cy - 90}" font-size="40">RH-<tspan class="brand-red">7</tspan></text>`;
-    v += txt('lbl mph-lbl', SPD.cx, SPD.cy - 52, 18, 'MPH');
-    // FUEL: kubah hitam kecil di dalam speedo (jarum = setFuel), E merah di kiri, F di kanan
-    const fA = (k) => FUEL.a0 + k * FUEL.sweep;                      // k = 0 (E) .. 1 (F)
-    v += `<g clip-path="url(#spdClip)">
-      <circle cx="${FUEL.cx}" cy="${FUEL.cy}" r="${FUEL.dome}" fill="url(#domeG)"/>
-      <circle cx="${FUEL.cx}" cy="${FUEL.cy}" r="${FUEL.dome - 3}" fill="none" stroke="url(#chrome)" stroke-width="5" opacity="0.9"/>
-      <path class="dred" d="${arcPath(FUEL.hx, FUEL.hy, 86, fA(0), fA(0.14))}"/>`;
-    for (let i = 0; i <= 8; i++) {
-        const major = i % 2 === 0, red = i <= 1;
-        v += tick(FUEL.hx, FUEL.hy, fA(i / 8), major ? 64 : 72, 81, major ? 3.4 : 2.2, red ? 'dtk red' : 'dtk');
-    }
-    const fl = (k, size, t) => { const [x, y] = pol(FUEL.hx, FUEL.hy, 44, fA(k)); return txt('dnum', x, y, size, t); };
-    v += fl(0, 22, 'E') + fl(0.5, 17, '1/2') + fl(1, 22, 'F') + `</g>`;
-    v += shade(SPD);
-    v += icon('fuel-ico', 'gauge-ico lt', FUEL.hx - 10.8, FUEL.hy + 15, 0.9, ICON_FUEL);
+    s += logo(918, 350, 36) + `<g class="mph-lbl">${txt('lbl up', 918, 398, 30, 'MPH')}</g>`;
+    s += `</g>`;
 
-    // gear + 3 ikon status: dua di kiri & dua di kanan kubah fuel
-    const ROW_Y = SPD.cy + 155, IC = 1.4 * 12;                       // IC = setengah lebar ikon
-    v += `<text id="gear" class="gear" x="${SPD.cx - 172}" y="${ROW_Y}">N</text>`;
-    v += icon('headlight', 'eng', SPD.cx - 128 - IC, ROW_Y - IC, 1.4, ICON_HEADLIGHT);
-    v += icon('seatbelts', 'eng warn', SPD.cx + 128 - IC, ROW_Y - IC, 1.4, ICON_SEATBELT);
-    v += icon('door-lock', '', SPD.cx + 172 - IC, ROW_Y - IC, 1.4, ICON_LOCK);
+    // ----- ikon status + gear (di tengah speedo, di bawah hub) -----
+    s += `<text id="gear" class="gear" x="918" y="530">N</text>`;
+    s += icon('headlight', 'eng', 832, 562, 1.3, ICON_HEADLIGHT);
+    s += icon('seatbelts', 'eng warn', 902, 562, 1.3, ICON_SEATBELT);
+    s += icon('door-lock', '', 972, 562, 1.3, ICON_LOCK);
 
-    // ODO digital LCD (dipusatkan di bawah hub speedo): mati total saat mesin off
-    const SEGS = segPolys();
-    let digits = '';
+    // ----- ODO: jendela LCD, drum angka berputar; digit terakhir (desimal) putih -----
+    s += `<g class="odo lit g-spd">
+    <rect x="780" y="613" width="277" height="54" rx="6" fill="#060810" stroke="#2b2f38" stroke-width="2"/>`;
     for (let i = 0; i < ODO_N; i++) {
-        const x = LCD.x0 + i * LCD.pitch;
-        let g = '';
-        for (const k of 'abcdefg') g += `<polygon class="seg-ghost" points="${SEGS[k]}"/>`;
-        for (const k of 'abcdefg') g += `<polygon class="seg" id="sg${i}${k}" points="${SEGS[k]}"/>`;
-        digits += `<g transform="translate(${x + 2} ${LCD.y}) skewX(-7) scale(${LCD.sc})">${g}</g>`;
+        const x = ODO_X0 + i * ODO_W, last = i === ODO_N - 1;
+        let rows = '';
+        for (let r = 0; r <= 10; r++) rows += `<text class="odo-digit${last ? ' odo-last' : ''}" x="${ODO_W / 2}" y="${ODO_ROW / 2 + r * ODO_ROW + 2}">${r % 10}</text>`;
+        s += `<svg x="${x}" y="${ODO_Y}" width="${ODO_W}" height="${ODO_ROW}" viewBox="0 0 ${ODO_W} ${ODO_ROW}" overflow="hidden">
+          <rect width="${ODO_W}" height="${ODO_ROW}" fill="${last ? '#f2f2f2' : '#050506'}"/>
+          <g class="odo-strip snap" id="odo${i}">${rows}</g>
+          <rect width="${ODO_W}" height="${ODO_ROW}" fill="url(#drumShade)"/>
+          ${i > 0 && !last ? `<line x1="0" y1="0" x2="0" y2="${ODO_ROW}" stroke="rgba(255,255,255,0.14)" stroke-width="1.5"/>` : ''}
+        </svg>`;
     }
-    const lx = SPD.cx - 123.5, ly = SPD.cy + 62;
-    v += `<g class="lcd">
-      <rect x="${lx}" y="${ly}" width="247" height="50" rx="8" fill="#0b0c0d"/>
-      <rect x="${lx + 5}" y="${ly + 4}" width="237" height="42" rx="4" fill="url(#lcdOff)"/>
-      <g class="lcd-live">
-        <rect x="${lx + 5}" y="${ly + 4}" width="237" height="42" rx="4" fill="url(#lcdOn)"/>
-        <g class="lcd-digits">${digits}<circle class="lcd-dot" cx="${LCD.x0 + 4 * LCD.pitch + 22}" cy="${LCD.y + 29}" r="1.6"/></g>
-      </g>
-      <rect x="${lx + 5}" y="${ly + 4}" width="237" height="18" rx="4" fill="url(#gloss)"/>
-    </g>`;
-    v += `<circle cx="${SPD.cx - 88}" cy="${SPD.cy}" r="8" fill="url(#hubG)"/><circle cx="${SPD.cx + 88}" cy="${SPD.cy}" r="8" fill="url(#hubG)"/>`;
-    v += needle('nd-fuel', FUEL.hx, FUEL.hy, 70, 14, 3.2, 13);
-    v += needle('nd-spd', SPD.cx, SPD.cy, 240, 72, 8, 44);
-    s += place('spd', v);
+    s += txt('lbl odo-tag', 794, 641, 17, 'ODO') + txt('lbl odo-tag end', 1044, 641, 17, 'MILES') + `</g>`;
+
+    // ----- jarum + hub (paling atas) -----
+    s += needle('nd-fuel', FUEL, 106, 24, 6) + needle('nd-oil', OIL, 112, 24, 6);
+    s += needle('nd-rpm', RPM, 216, 38, 8.5) + needle('nd-spd', SPD, 290, 38, 8.5);
 
     svg.innerHTML = s;
 }
@@ -285,11 +261,10 @@ buildDial();
 
 const ndSpd = $('nd-spd'), ndRpm = $('nd-rpm'), ndFuel = $('nd-fuel'), ndOil = $('nd-oil');
 const ang = {};
-function setNeedle(el, key, x, y, a, sx) {
-    const k = a.toFixed(2) + '|' + sx.toFixed(3);
-    if (ang[key] === k) return;                                   // tulis hanya kalau jarum benar-benar bergerak
-    ang[key] = k;
-    el.setAttribute('transform', `translate(${x} ${y}) rotate(${a.toFixed(2)}) scale(${sx.toFixed(3)} 1)`);
+function setNeedle(el, key, g, a) {
+    if (ang[key] !== undefined && Math.abs(ang[key] - a) < 0.04) return;   // tulis hanya kalau jarum benar-benar bergerak
+    ang[key] = a;
+    el.setAttribute('transform', `translate(${g.cx} ${g.cy}) rotate(${a.toFixed(2)})`);
 }
 // Helper kelas untuk elemen SVG (className SVG bukan string biasa)
 function setCls(el, cls) { if (el.getAttribute('class') !== cls) el.setAttribute('class', cls); }
@@ -300,7 +275,7 @@ const state = {
     mph: 0, mps: 0,
     rpm: 0, health: 1, fuel: 1,
     spdShown: 0, rpmShown: 0, fuelShown: 0, oilShown: 0,
-    belted: false, engine: false, lights: 0,
+    belted: false, engine: false, lights: 0, dimmer: 1,
 };
 const BOOT_MS = 1700;
 let bootUntil = 0;
@@ -327,17 +302,16 @@ function frame(now) {
         sw = t < 0.45 ? t / 0.45 : t < 0.55 ? 1 : Math.max(0, 1 - (t - 0.55) / 0.45);
     }
 
-    const RPM_SPAN = MAX_RPM / RPM_FULL;            // sapuan boot menjangkau ujung skala 11
-    const OIL_SPAN = OIL_MAX / OIL_FULL_PSI;        // sapuan boot menjangkau 120 PSI
     const tSpd = booting ? Math.max(sw, state.mph / MAX_MPH) : state.mph / MAX_MPH;
     const limiter = !booting && state.engine && state.rpm >= LIMITER;
-    let tRpm = booting ? sw * RPM_SPAN : state.engine ? state.rpm : 0;
+    const rpmFrac = state.rpm * (RPM_FULL / MAX_RPM);      // setRPM(0-1) -> posisi pada skala tacho
+    let tRpm = booting ? sw : state.engine ? rpmFrac : 0;
     if (limiter) {   // rev limiter: jarum mental-mental di dekat batas (fuel cut), seperti mobil asli
         const cut = Math.sin((now / 1000) * 2 * Math.PI * 11) > 0;
-        tRpm = state.rpm - (cut ? 0.04 + Math.random() * 0.02 : Math.random() * 0.012);
+        tRpm = rpmFrac - (cut ? 0.035 + Math.random() * 0.02 : Math.random() * 0.01);
     }
     const tFuel = booting ? Math.max(sw, state.fuel) : state.engine ? state.fuel : 0;
-    const tOil = booting ? sw * OIL_SPAN : state.engine ? state.health : 0;
+    const tOil = booting ? sw : state.engine ? clamp01(state.health * (OIL_FULL / OIL_MAX)) : 0;
 
     const kf = booting ? 1 : Math.min(1, dt * (limiter ? 45 : 12)), ks = booting ? 1 : Math.min(1, dt * 4);
     const ease = (cur, tgt, k) => (Math.abs(tgt - cur) < 0.0004 ? tgt : cur + (tgt - cur) * k);
@@ -346,12 +320,10 @@ function frame(now) {
     state.fuelShown = ease(state.fuelShown, tFuel, ks);
     state.oilShown = ease(state.oilShown, tOil, ks);
 
-    setNeedle(ndSpd, 'spd', SPD.cx, SPD.cy, SPD.a0 + clamp01(state.spdShown) * SPD.sweep, 1);
-    const rv = Math.max(0, Math.min(MAX_RPM, state.rpmShown * RPM_FULL));
-    setNeedle(ndRpm, 'rpm', RPM.cx, RPM.cy, RPM.a0 + (rv / MAX_RPM) * RPM.sweep, 1);
-    setNeedle(ndFuel, 'fuel', FUEL.hx, FUEL.hy, FUEL.a0 + clamp01(state.fuelShown) * FUEL.sweep, 1);
-    const psi = Math.max(0, Math.min(OIL_MAX, state.oilShown * OIL_FULL_PSI));
-    setNeedle(ndOil, 'oil', OIL.hx, OIL.hy, OIL.a0 + (psi / OIL_MAX) * OIL.sweep, 1);
+    setNeedle(ndSpd, 'spd', SPD, SPD.a0 + clamp01(state.spdShown) * SPD.sweep);
+    setNeedle(ndRpm, 'rpm', RPM, RPM.a0 + clamp01(state.rpmShown) * RPM.sweep);
+    setNeedle(ndFuel, 'fuel', FUEL, FUEL.a0 + clamp01(state.fuelShown) * FUEL.sweep);
+    setNeedle(ndOil, 'oil', OIL, OIL.a0 + clamp01(state.oilShown) * OIL.sweep);
 
     if (booting || limiter || state.spdShown !== tSpd || state.rpmShown !== tRpm || state.fuelShown !== tFuel || state.oilShown !== tOil) {
         rafId = requestAnimationFrame(frame);
@@ -375,16 +347,16 @@ window.setRPM = function (rpm) {
 window.setFuel = function (fuel) {
     const val = Number(fuel || 0);
     state.fuel = clamp01(val > 1 ? val / 100 : val);
-    setCls($('fuel-ico'), state.fuel < 0.2 ? 'ind gauge-ico lt low' : 'ind gauge-ico lt');
+    setCls($('fuel-ico'), state.fuel < 0.2 ? 'ind gauge-ico low' : 'ind gauge-ico');
     kick();
 };
-// ---------- 4. Engine health -> jarum OIL PSI (di dalam gauge RPM) ----------
+// ---------- 4. Engine health -> jarum OIL PSI ----------
 window.setHealth = function (health) {
     const val = Number(health || 0);
     const p = clamp01(val > 1 ? val / 1000 : val);
     if (p === state.health) return;
     state.health = p;
-    setCls($('oil-ico'), p <= 0.3 ? 'ind gauge-ico lt crit' : p <= 0.5 ? 'ind gauge-ico lt low' : 'ind gauge-ico lt');
+    setCls($('oil-ico'), p <= 0.3 ? 'ind gauge-ico crit' : p <= 0.5 ? 'ind gauge-ico low' : 'ind gauge-ico');
     kick();
 };
 // ---------- 5. Gear ----------
@@ -407,7 +379,21 @@ window.setHeadlights = function (st) {
     state.lights = val;
     setCls($('headlight'), val === 2 ? 'ind eng high-beam' : val === 1 ? 'ind eng active' : 'ind eng');
     elHud.classList.toggle('lights-on', val > 0);
+    applyLum();
 };
+// ---------- Dimmer Optitron: kecerahan dial (CSS --lum). Lampu depan nyala = otomatis x NIGHT_LUM ----------
+function applyLum() {
+    const lum = Math.max(0.12, Math.min(1, state.dimmer * (state.lights > 0 ? NIGHT_LUM : 1)));
+    elHud.style.setProperty('--lum', lum.toFixed(3));
+}
+window.setDimmer = function (v) {
+    let n = Number(v);
+    if (isNaN(n)) return;
+    if (n > 1) n /= 100;                       // boleh 0-100
+    state.dimmer = Math.max(0.15, Math.min(1, n));
+    applyLum();
+};
+window.setBrightness = window.setDimmer;
 window.setLights = window.setHeadlights;
 window.setLeftIndicator = function () {};     // sein dihapus
 window.setRightIndicator = function () {};
@@ -419,29 +405,39 @@ window.setSeatbelts = function (val) {
     setCls($('seatbelts'), on ? 'ind eng active' : 'ind eng warn');
 };
 
-// ---------- 9. Odometer (mil) -> LCD 7-segment: 5 digit + 1 digit desimal ----------
+// ---------- 9. Odometer (mil) -> 5 digit + 1 digit desimal, drum berputar ----------
 let lastOdo = '';
-const odoSegs = [];
+const odoCells = [];
 for (let i = 0; i < ODO_N; i++) {
-    const o = {};
-    for (const k of 'abcdefg') o[k] = $('sg' + i + k);
-    odoSegs.push(o);
+    const el = $('odo' + i), c = { el, row: 0 };
+    el.addEventListener('transitionend', () => {          // 9 -> 0: setelah putar ke "0" cadangan, lompat balik ke baris 0 tanpa animasi
+        if (c.row === 10) odoMove(c, 0, false);
+    });
+    odoCells.push(c);
+}
+function odoMove(c, row, animate) {
+    c.row = row;
+    if (!animate) c.el.classList.add('snap');
+    c.el.style.transform = `translateY(${-row * ODO_ROW}px)`;
+    if (!animate) { void c.el.getBoundingClientRect(); c.el.classList.remove('snap'); }
 }
 window.setOdometer = function (distance) {
     const n = Math.max(0, Math.min(999999, Math.floor(Number(distance || 0) * 10)));
     const s = String(n).padStart(ODO_N, '0');
     if (s === lastOdo) return;
+    const animate = lastOdo !== '' && state.engine;      // pertama kali / mesin mati: langsung set tanpa animasi
     lastOdo = s;
     for (let i = 0; i < ODO_N; i++) {
-        const on = SEG_ON[+s[i]];
-        for (const k of 'abcdefg') {
-            const el = odoSegs[i][k], want = on.indexOf(k) >= 0;
-            if (el.classList.contains('on') !== want) el.classList.toggle('on', want);
-        }
+        const c = odoCells[i], d = +s[i];
+        if (c.row === 10) odoMove(c, 0, false);
+        if (c.row === d) continue;
+        if (!animate) odoMove(c, d, false);
+        else if (d < c.row && c.row - d > 5) odoMove(c, 10, true);   // lewat 9 -> 0: putar maju terus
+        else odoMove(c, d, true);
     }
 };
 
-// ---------- 10. MESIN: nyala = dial terang + ODO hidup + jarum menyapu; mati = layar gelap ----------
+// ---------- 10. MESIN: nyala = dial terang + jarum menyapu ----------
 window.setEngine = function (on) {
     const v = isTrueValue(on);
     const was = state.engine;
@@ -552,6 +548,8 @@ window.addEventListener('message', function (event) {
             case 'setLights': window.setHeadlights(Number(d.state !== undefined ? d.state : d.lights) || 0); break;
             case 'setSeatbelts': window.setSeatbelts(!!d.state); break;
             case 'setOdometer': window.setOdometer(Number(d.distance) || 0); break;
+            case 'setDimmer':
+            case 'setBrightness': window.setDimmer(d.value !== undefined ? d.value : d.level !== undefined ? d.level : d.dimmer); break;
             case 'toggleVbox': window.toggleVbox(); break;
             case 'setVbox': window.setVbox(d.state !== undefined ? !!d.state : true); break;
             case 'resetVbox': window.resetVbox(); break;
@@ -570,6 +568,7 @@ window.setFuel(100);
 window.setHealth(1000);
 window.setGear('N');
 window.setHeadlights(0);
+window.setDimmer(1);
 window.setSeatbelts(false);
 window.setEngine(false);
 window.updateLockStatus(false);
@@ -687,15 +686,19 @@ const isPreview = params.has('demo') || (/netlify\.app$/.test(location.hostname)
 
 if (isPreview) {
     document.body.classList.add('preview');
-    const btnE = $('dev-engine'), btnL = $('dev-lights');
+    const btnE = $('dev-engine'), btnL = $('dev-lights'), btnD = $('dev-dim');
     const LIGHT_NAMES = ['OFF', 'LOW', 'HIGH'];
     const toggleEngine = () => { setEngine(!state.engine); };
     const cycleLights = () => { setHeadlights((state.lights + 1) % 3); };
     btnE.addEventListener('click', toggleEngine);
     btnL.addEventListener('click', cycleLights);
+    const DIMS = [1, 0.7, 0.4, 0.2];
+    const cycleDim = () => { setDimmer(DIMS[(DIMS.findIndex((d) => Math.abs(d - state.dimmer) < 0.01) + 1) % DIMS.length]); };
+    btnD.addEventListener('click', cycleDim);
     window.addEventListener('keydown', (e) => {
         if (e.key === 'e' || e.key === 'E') toggleEngine();
         if (e.key === 'l' || e.key === 'L') cycleLights();
+        if (e.key === 'd' || e.key === 'D') cycleDim();
     });
 
     const GEAR_TOP = [0, 28, 48, 72, 98, 128, 165];
@@ -705,6 +708,7 @@ if (isPreview) {
         btnE.classList.toggle('on', state.engine);
         btnL.textContent = 'Lampu: ' + LIGHT_NAMES[state.lights];
         btnL.classList.toggle('on', state.lights > 0);
+        btnD.textContent = 'Dimmer: ' + Math.round(state.dimmer * 100) + '%';
 
         if (!state.engine || performance.now() < bootUntil) {   // mesin mati / masih menyapu: mobil diam
             mps = 0; gear = 1; throttle = true;
