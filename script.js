@@ -10,7 +10,7 @@
    Optitron:
      setEngine(true)    -> ignition wake-up: dial menyala bertahap + jarum menyapu
      (normal)           -> angka putih menyala, jarum merah menyala + glow
-     setHeadlights(1|2) -> dial otomatis meredup (NIGHT_LUM x dimmer)
+     setHeadlights(1|2) -> SEMUA JARUM menyala (merah terang + glow); lampu mati = jarum redup
      setEngine(false)   -> shutdown: jarum turun, cahaya dial memudar pelan
    ========================================================= */
 
@@ -23,7 +23,6 @@ const LIMITER = 0.96;       // RPM (0-1) mulai dianggap kena limiter -> jarum ge
 const OIL_MAX = 120;        // skala oil press (PSI)
 const OIL_FULL = 80;        // PSI yang ditunjuk saat health = 1.0 (normal)
 const OIL_RED = 100;        // mulai zona merah oil (PSI)
-const NIGHT_LUM = 0.7;      // faktor redup otomatis saat lampu depan nyala
 
 const NOOP_EL = document.createElement('div');   // pengaman kalau ada elemen yang dihapus dari HTML
 const $ = (id) => document.getElementById(id) || NOOP_EL;
@@ -65,13 +64,15 @@ const tick = (cx, cy, a, r1, r2, w, cls) => {
     return `<line class="tk${cls ? ' ' + cls : ''}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke-width="${w}"/>`;
 };
 const txt = (cls, x, y, size, s) => `<text class="${cls}" x="${x}" y="${y}" font-size="${size}">${s}</text>`;
-const logo = (x, y, size) => `<text class="logo" x="${x}" y="${y}" font-size="${size}">nism<tspan class="o">o</tspan></text>`;
+const logo = (x, y, size) => `<text class="logo" x="${x}" y="${y}" font-size="${size}">HSW</text>`;
 
 // Bezel hitam + ring krom + tepi merah + muka dial hitam (Optitron)
 function bezelFace(g) {
     const by = g.by || g.cy, sy = g.sy || 1;
     return `
     <g transform="translate(${g.cx} ${by}) scale(1 ${sy}) translate(${-g.cx} ${-by})">
+      <circle cx="${g.cx}" cy="${by}" r="${g.bezel + 12}" fill="#0b0b0d" stroke="rgba(255,255,255,0.16)" stroke-width="2"/>
+      <circle cx="${g.cx}" cy="${by}" r="${g.bezel + 5}" fill="none" stroke="#000" stroke-opacity="0.7" stroke-width="5"/>
       <circle cx="${g.cx}" cy="${by}" r="${g.bezel}" fill="#050506"/>
       <circle cx="${g.cx}" cy="${by}" r="${g.bezel - 4}" fill="none" stroke="url(#chrome)" stroke-width="3" opacity="0.5"/>
       <circle cx="${g.cx}" cy="${by}" r="${g.ring}" fill="none" stroke="url(#chrome)" stroke-width="9"/>
@@ -139,12 +140,6 @@ function buildDial() {
       <linearGradient id="glassG" x1="0" y1="0" x2="1" y2="1">
         <stop offset="0" stop-color="#fff" stop-opacity="0.11"/><stop offset="0.45" stop-color="#fff" stop-opacity="0"/>
       </linearGradient>
-      <linearGradient id="housG" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" stop-color="#1b1c20"/><stop offset="0.5" stop-color="#0d0d10"/><stop offset="1" stop-color="#060607"/>
-      </linearGradient>
-      <linearGradient id="metalG" x1="0" y1="0" x2="1" y2="1">
-        <stop offset="0" stop-color="#3a3c42"/><stop offset="1" stop-color="#0f1013"/>
-      </linearGradient>
       <linearGradient id="gtG" x1="0" y1="0" x2="0" y2="1">
         <stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#7d818a"/>
       </linearGradient>
@@ -156,17 +151,7 @@ function buildDial() {
         <stop offset="0" stop-color="#3a3b40"/><stop offset="0.6" stop-color="#0c0c0e"/><stop offset="1" stop-color="#030304"/>
       </radialGradient>
       <filter id="bloom" x="-25%" y="-25%" width="150%" height="150%"><feGaussianBlur stdDeviation="6"/></filter>
-    </defs>
-
-    <!-- rumah cluster + panel logam -->
-    <path d="M70 440C70 340 150 238 275 224L535 214L600 188C700 146 805 120 918 120C1032 120 1140 146 1236 188L1295 212L1478 220C1600 232 1685 330 1712 415L1736 450C1738 560 1712 650 1650 722L1580 752L330 748C170 740 72 620 70 440Z" fill="url(#housG)" stroke="rgba(255,255,255,0.14)" stroke-width="2"/>
-    <polygon points="540,246 612,192 735,160 700,238" fill="url(#metalG)" opacity="0.8"/>
-    <polygon points="1140,196 1250,212 1296,246 1210,258" fill="url(#metalG)" opacity="0.8"/>
-    <polygon points="1566,298 1690,262 1728,430 1690,520 1572,474" fill="#101114" stroke="rgba(255,255,255,0.07)" stroke-width="2"/>
-    <polygon points="1215,596 1350,588 1405,636 1385,676 1215,676" fill="url(#metalG)" opacity="0.75"/>
-    <g class="lit g-spd">
-      <path class="accent" d="M545 656H640M1205 656H1330L1350 640"/>
-    </g>`;
+    </defs>`;
 
     // ===================== TACHO (kiri) =====================
     s += bezelFace(RPM);
@@ -182,7 +167,7 @@ function buildDial() {
         s += txt('num', x, y, 42, v);
     }
     s += logo(357, 398, 30) + txt('lbl', 357, 538, 24, 'x1000r/min');
-    s += `<g class="gtr"><text class="gtr-gt" x="357" y="612" font-size="27">GT</text><text class="gtr-r" x="357" y="654" font-size="58">R</text></g>`;
+    s += `<text class="gtr" x="357" y="632" font-size="52">RH-<tspan class="n7">7</tspan></text>`;
     s += `</g>`;
 
     // ===================== FUEL (kanan atas) =====================
@@ -236,8 +221,9 @@ function buildDial() {
     s += icon('door-lock', '', 972, 562, 1.3, ICON_LOCK);
 
     // ----- ODO: jendela LCD, drum angka berputar; digit terakhir (desimal) putih -----
-    s += `<g class="odo lit g-spd">
-    <rect x="780" y="613" width="277" height="54" rx="6" fill="#060810" stroke="#2b2f38" stroke-width="2"/>`;
+    s += `<rect x="780" y="613" width="277" height="54" rx="6" fill="#07090d" stroke="#2b2f38" stroke-width="2"/>
+    <rect x="780" y="613" width="277" height="54" rx="6" fill="url(#glassG)"/>
+    <g class="odo lit g-spd">`;
     for (let i = 0; i < ODO_N; i++) {
         const x = ODO_X0 + i * ODO_W, last = i === ODO_N - 1;
         let rows = '';
@@ -381,9 +367,9 @@ window.setHeadlights = function (st) {
     elHud.classList.toggle('lights-on', val > 0);
     applyLum();
 };
-// ---------- Dimmer Optitron: kecerahan dial (CSS --lum). Lampu depan nyala = otomatis x NIGHT_LUM ----------
+// ---------- Dimmer Optitron: kecerahan dial (CSS --lum) ----------
 function applyLum() {
-    const lum = Math.max(0.12, Math.min(1, state.dimmer * (state.lights > 0 ? NIGHT_LUM : 1)));
+    const lum = Math.max(0.12, Math.min(1, state.dimmer));
     elHud.style.setProperty('--lum', lum.toFixed(3));
 }
 window.setDimmer = function (v) {
