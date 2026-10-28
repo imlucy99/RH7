@@ -236,3 +236,30 @@ body.no-btn .vbox-btn { display: none; }
 }
 .vbox .vb-btns button:hover { border-color: #36c3ff; }
 .vbox .vb-btns button:active { transform: scale(0.97); }
+
+/* ===================== MUSIK (now playing, sinkron lewat room) ===================== */
+.music {
+    position: absolute; left: 50%; bottom: 100%; transform: translate(-50%, 10px);
+    display: flex; align-items: center; gap: 22px;
+    width: 640px; max-width: 100%; margin-bottom: 14px; padding: 12px 26px;
+    border-radius: 999px; border: 2px solid rgba(255, 255, 255, 0.2);
+    background: linear-gradient(180deg, rgba(28, 29, 34, 0.9), rgba(4, 4, 5, 0.92));
+    box-shadow: 0 6px 22px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.4s ease, transform 0.4s ease;
+}
+.music.show { opacity: var(--lum2, 1); transform: translate(-50%, 0); }
+.music .mu-eq { display: flex; align-items: flex-end; gap: 5px; height: 34px; flex: none; }
+.music .mu-eq i { width: 7px; height: 8px; background: #d4161a; border-radius: 2px; box-shadow: 0 0 8px rgba(255, 42, 31, 0.6); }
+.music.on .mu-eq i { animation: mu-bar 0.9s ease-in-out infinite; }
+.music.on .mu-eq i:nth-child(2) { animation-delay: -0.3s; animation-duration: 0.7s; }
+.music.on .mu-eq i:nth-child(3) { animation-delay: -0.6s; animation-duration: 1.1s; }
+.music.on .mu-eq i:nth-child(4) { animation-delay: -0.15s; animation-duration: 0.8s; }
+@keyframes mu-bar { 0%, 100% { height: 8px; } 50% { height: 34px; } }
+.music .mu-txt { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; }
+.music .mu-title {
+    display: inline-block; font: 700 30px/1.1 var(--ui); letter-spacing: 1.5px; color: var(--ink);
+    padding-left: 100%; animation: mu-marq 14s linear infinite;
+}
+@keyframes mu-marq { to { transform: translateX(-100%); } }
+.music .mu-time { flex: none; font: 600 24px/1 var(--digital); color: #36c3ff; letter-spacing: 1px; }
