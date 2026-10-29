@@ -42,6 +42,16 @@
   .toggle input { width: 18px; height: 18px; accent-color: var(--red); }
   .msg { font-size: 13px; color: #ffb800; min-height: 18px; }
   details summary { cursor: pointer; font-weight: 700; }
+  .sw { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 8px 0 12px; }
+  .sw button { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 0; font-size: 12px; }
+  .sw i { width: 26px; height: 26px; border-radius: 50%; border: 2px solid rgba(255,255,255,.25); }
+  .sw button.sel { border-color: var(--ink); background: #2a2d35; }
+  .colors { display: flex; gap: 12px; margin-bottom: 12px; }
+  .colors label { flex: 1; margin: 0; }
+  input[type=color] { width: 100%; height: 40px; border: 1px solid var(--line); border-radius: 8px; background: #0d0e11; padding: 2px; margin-top: 4px; cursor: pointer; }
+  .sl { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; font-size: 14px; }
+  .sl span { width: 70px; color: var(--dim); }
+  .sl b { width: 44px; text-align: right; font-size: 14px; }
   details .in { margin-top: 12px; }
 </style>
 </head>
@@ -96,6 +106,19 @@
     <button id="clear" type="button" style="flex:none">Kosongkan</button>
   </div>
   <ul class="q" id="q"></ul>
+</div>
+
+<div class="card">
+  <b>Tema speedo</b>
+  <div class="sub" style="margin:2px 0 0">Berlaku untuk semua speedo di room ini.</div>
+  <div class="sw" id="sw"></div>
+  <div class="colors">
+    <label>WARNA UTAMA (kustom)<input type="color" id="cmain" value="#ff8800" /></label>
+    <label>WARNA ANGKA<input type="color" id="cink" value="#f4f6fa" /></label>
+  </div>
+  <div class="sl"><span>Kecerahan</span><input type="range" id="dim" min="15" max="100" value="100" /><b id="dimv">100%</b></div>
+  <div class="sl"><span>Ukuran HUD</span><input type="range" id="scl" min="30" max="100" value="55" /><b id="sclv">55%</b></div>
+  <button id="treset" type="button" style="width:100%;margin-top:6px">Kembali ke tema asli</button>
 </div>
 
 <script>
@@ -231,6 +254,7 @@
     const ok = await syncClock();
     if (!ok) { setStat(false, 'Tidak bisa terhubung ke database. Cek URL.'); return; }
     setStat(true, 'Tersambung - room: ' + ROOM);
+    listenTheme();
     try {
       es = new EventSource(stateUrl());
       es.addEventListener('put', (ev) => {
@@ -243,7 +267,67 @@
     } catch (e) { setStat(false, 'Browser tidak mendukung EventSource'); }
   }
 
+  // ---------- Tema ----------
+  const PRESETS = [['merah', 'Merah', '#d4161a'], ['biru', 'Biru', '#2f7bff'], ['cyan', 'Cyan', '#19d3ff'], ['hijau', 'Hijau', '#22d65a'],
+                   ['amber', 'Amber', '#ffb000'], ['pink', 'Pink', '#ff4fa3'], ['ungu', 'Ungu', '#a65cff'], ['putih', 'Putih', '#f2f4f8']];
+  let th = {}, themeEs = null;
+  const themeUrl = () => `${DB}/rooms/${ROOM}/theme.json`;
+
+  async function commitTheme(patch) {
+    if (!DB) { flash('Isi Database URL dulu di Pengaturan room.'); $('cfg').open = true; return; }
+    const next = Object.assign({}, th, patch);
+    try {
+      const r = await fetch(themeUrl(), { method: 'PUT', body: JSON.stringify(next) });
+      if (!r.ok) throw new Error(r.status);
+      th = (await r.json()) || {};
+      renderTheme();
+    } catch (e) { flash('Gagal menyimpan tema. Cek URL dan aturan (rules) Firebase.'); }
+  }
+
+  const sw = $('sw');
+  PRESETS.forEach(([id, name, c]) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.dataset.id = id;
+    b.innerHTML = '<i style="background:' + c + '"></i>' + name;
+    b.onclick = () => commitTheme({ preset: id });
+    sw.append(b);
+  });
+
+  function renderTheme() {
+    const cur = th.preset || 'merah';
+    sw.querySelectorAll('button').forEach((b) => b.classList.toggle('sel', b.dataset.id === cur));
+    if (th.main && document.activeElement !== $('cmain')) $('cmain').value = th.main;
+    if (th.ink && document.activeElement !== $('cink')) $('cink').value = th.ink;
+    const dim = th.dim != null ? Math.round(th.dim * 100) : 100, scl = th.scale != null ? Math.round(th.scale * 100) : 55;
+    if (document.activeElement !== $('dim')) { $('dim').value = dim; $('dimv').textContent = dim + '%'; }
+    if (document.activeElement !== $('scl')) { $('scl').value = scl; $('sclv').textContent = scl + '%'; }
+  }
+
+  let tT = 0;
+  const later = (fn) => { clearTimeout(tT); tT = setTimeout(fn, 300); };
+  $('cmain').oninput = () => later(() => commitTheme({ preset: 'custom', main: $('cmain').value, ink: $('cink').value }));
+  $('cink').oninput = () => later(() => commitTheme({ ink: $('cink').value }));
+  $('dim').oninput = () => { $('dimv').textContent = $('dim').value + '%'; later(() => commitTheme({ dim: $('dim').value / 100 })); };
+  $('scl').oninput = () => { $('sclv').textContent = $('scl').value + '%'; later(() => commitTheme({ scale: $('scl').value / 100 })); };
+  $('treset').onclick = async () => {
+    if (!DB) return;
+    try { await fetch(themeUrl(), { method: 'DELETE' }); th = {}; renderTheme(); } catch (e) { flash('Gagal mereset tema.'); }
+  };
+
+  function listenTheme() {
+    if (themeEs) { themeEs.close(); themeEs = null; }
+    try {
+      themeEs = new EventSource(themeUrl());
+      themeEs.addEventListener('put', (ev) => {
+        let m; try { m = JSON.parse(ev.data); } catch (e) { return; }
+        if (m.path === '/') { th = m.data || {}; renderTheme(); }
+        else fetch(themeUrl()).then((r) => r.json()).then((d) => { th = d || {}; renderTheme(); });
+      });
+    } catch (e) {}
+  }
+
   render();
+  renderTheme();
   connect();
 })();
 </script>

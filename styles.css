@@ -263,3 +263,10 @@ body.no-btn .vbox-btn { display: none; }
 }
 @keyframes mu-marq { to { transform: translateX(-100%); } }
 .music .mu-time { flex: none; font: 600 24px/1 var(--digital); color: #36c3ff; letter-spacing: 1px; }
+
+/* ===================== TEMA (warna diatur theme.js lewat variabel CSS) ===================== */
+.dial .edge { stroke: var(--edge, #c8181c); }
+.dial .tk.red { stroke: var(--tkred, #ff6a6a); }
+.dial .gtr .n7 { fill: var(--accent, #e01c20); }
+.music .mu-eq i { background: var(--zone, #d4161a); }
+.music .mu-time { color: var(--accent, #36c3ff); }
